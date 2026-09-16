@@ -7,11 +7,11 @@ import { fileURLToPath } from 'node:url';
 import * as store from './lib/store.js';
 import * as auth from './lib/auth.js';
 import * as health from './lib/health.js';
-import { notifyLead, channelsConfigured } from './lib/notify.js';
+import { notifyLead, channelsConfigured, notifyStatus } from './lib/notify.js';
 import { create as createBackup } from './scripts/backup.js';
 import { buildIndex, bm25, fuse, cosine, cacheLookup, cacheStore, cacheClear } from './lib/retrieve.js';
 import { chat, embed, needsSmartModel } from './lib/llm.js';
-import { buildSystemPrompt, parseReply, isContactable, isComplete } from './lib/prompt.js';
+import { buildSystemPrompt, parseReply, isContactable, isComplete, extractFromMessage, cleanLead, DEFAULT_CONFIRMATION } from './lib/prompt.js';
 import { crawl, chunkText, attachEmbeddings } from './lib/ingest.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -173,11 +173,26 @@ app.post('/api/chat', async (req, res) => {
 
     // 3. Answer.
     const knownLead = tenant.leads.find((l) => l.conversationId === convId) || {};
+    // What did the bot ask for last turn? Lets us read a bare "03124574845"
+    // or "Ammar Aziz" as an answer rather than guessing from the text alone.
+    const required = tenant.settings.leadFields || ['name', 'phone'];
+    const lastBotMessage = [...history].reverse().find((h) => h.role === 'assistant')?.content || '';
+    const asking = /email/i.test(lastBotMessage) ? 'email'
+      : /phone|number|whatsapp|mobile/i.test(lastBotMessage) ? 'phone'
+      : /name/i.test(lastBotMessage) ? 'name'
+      : null;
     const messages = [
       { role: 'system', content: buildSystemPrompt(tenant, results, knownLead) },
       ...history.slice(-6).map((h) => ({ role: h.role, content: String(h.content).slice(0, 1000) })),
       { role: 'user', content: message.slice(0, 1000) },
     ];
+
+    // Capture contact details from the raw message first — this must not
+    // depend on the model call succeeding.
+    const scanned = cleanLead(extractFromMessage(message, asking));
+    const gaveDetails = Object.keys(scanned).length > 0;
+    const scannedLead = mergeLead(tenant, convId, scanned);
+    if (scannedLead) { store.save(tenant.id); notifyOnce(tenant, scannedLead); }
 
     const model = needsSmartModel(message, results) ? process.env.LLM_MODEL_SMART : process.env.LLM_MODEL;
     const out = await chat(messages, { model, json: true, maxTokens: 500 });
@@ -193,42 +208,27 @@ app.post('/api/chat', async (req, res) => {
 
     // Details arrive one message at a time, so merge rather than replace, and
     // never let a later blank wipe something already collected.
-    const anyField = Object.keys(reply.lead).length > 0;
-    if (anyField) {
-      const required = tenant.settings.leadFields || ['name', 'phone'];
-      let lead = tenant.leads.find((l) => l.conversationId === convId);
-      if (!lead) {
-        lead = { id: store.id(), conversationId: convId, at: new Date().toISOString(), status: 'new' };
-        tenant.leads.unshift(lead);
-      }
-      for (const [k, v] of Object.entries(reply.lead)) if (v) lead[k] = v;
-      lead.updatedAt = new Date().toISOString();
-      lead.complete = isComplete(lead, required);
-      lead.contactable = isContactable(lead);
-      lead.missing = required.filter((f) => !String(lead[f] || '').trim());
-      // The first question tells the client what the caller actually wants.
-      const conv = tenant.conversations.find((c) => c.id === convId);
-      if (conv?.turns?.length) lead.firstQuestion = conv.turns[0].q;
-
-      // Ping once when the lead first becomes reachable, and once more when
-      // every detail is in. Not on every field, or it becomes noise the owner
-      // learns to ignore — which is the same as not sending it at all.
-      const stage = lead.complete ? 'complete' : lead.contactable ? 'contactable' : null;
-      if (stage && lead.notifiedStage !== stage && lead.notifiedStage !== 'complete') {
-        lead.notifiedStage = stage;
-        // Deliberately not awaited: the visitor should never wait on an email.
-        notifyLead(tenant, lead)
-          .then((r) => { const bad = r.filter((x) => x.failed); if (bad.length) console.warn('[notify]', bad); })
-          .catch((e) => console.warn('[notify]', e.message));
-      }
-    }
+    // The model may still spot something the regex missed (a name given mid
+    // sentence, the intent), so merge its extraction on top.
+    const lead = mergeLead(tenant, convId, reply.lead);
+    if (lead) notifyOnce(tenant, lead);
 
     logTurn(tenant, convId, message, reply.answer, {
       grounded: reply.grounded,
       handoff: reply.handoff,
       model: out.model,
+      // A name or phone number is not a question the bot failed to answer.
+      leadTurn: gaveDetails || asking !== null,
     });
     store.save(tenant.id);
+
+    // A blank reply reads as a broken bot. Fall back to something sensible.
+    if (!reply.answer.trim()) {
+      const merged = { ...knownLead, ...reply.lead };
+      reply.answer = isComplete(merged, required)
+        ? (tenant.settings.bookingConfirmation || DEFAULT_CONFIRMATION)
+        : tenant.settings.handoffMessage;
+    }
 
     res.json({
       answer: reply.answer,
@@ -240,9 +240,73 @@ app.post('/api/chat', async (req, res) => {
   } catch (err) {
     console.error('[chat]', err.message);
     health.recordFailure(err.message);
+    store.save(tenant.id);   // anything scanned before the failure is kept
     res.json({ answer: tenant.settings.handoffMessage, conversationId: convId, handoff: true, suggestions: [] });
   }
 });
+
+// Contact details are merged the moment they are seen, before the model is
+// called. If the provider is down or returns junk, the lead is still captured
+// — losing a customer's phone number because an API had a bad minute is not
+// an acceptable failure mode.
+// Ping once when the lead first becomes reachable, and once more when every
+// detail is in. Not on every field, or it becomes noise the owner learns to
+// ignore — which is the same as not sending it at all.
+function notifyOnce(tenant, lead) {
+  const stage = lead.complete ? 'complete' : lead.contactable ? 'contactable' : null;
+  if (!stage || lead.notifiedStage === stage || lead.notifiedStage === 'complete') return;
+  lead.notifiedStage = stage;
+  // Deliberately not awaited: the visitor should never wait on an email.
+  notifyLead(tenant, lead)
+    .then((r) => { const bad = r.filter((x) => x.failed); if (bad.length) console.warn('[notify]', bad); })
+    .catch((e) => console.warn('[notify]', e.message));
+}
+
+// The gaps list is only useful if every line is a real question the knowledge
+// base failed to answer. Contact details, greetings and questions about the
+// visitor's own booking are ungrounded by definition — listing them buries the
+// genuine gaps the client should act on.
+const PHONE_LIKE = /^[\s+\d()./-]{6,}$/;
+const EMAIL_LIKE = /@/;
+// A person's name is rarely more than four words — anything longer that looks
+// like plain words is a sentence, very often a question in a language whose
+// question words we do not list.
+const NAME_LIKE = (q) => /^[\p{L}\s.'-]{2,40}$/u.test(q) && q.split(/\s+/).length <= 4;
+// Question markers across the languages this bot actually sees.
+const QUESTION_WORD = /\?|\b(do|does|did|can|could|what|when|where|how|why|who|which|is|are|will|would|should|price|cost|open|available)\b|\b(kya|kia|kitna|kitne|kitni|kab|kahan|kaise|kaisay|konsa|hai|ho|karte|krte)\b/i;
+const SMALL_TALK = /^(hi|hey|hello|thanks?|thank you|ok|okay|sure|yes|no|bye|good (morning|afternoon|evening)|salam|assalam[ou]? ?alaikum)\b/i;
+const OWN_BOOKING = /\b(my|the) (appointment|booking|request|slot)\b|\bis (it|that|my appointment) (booked|confirmed)\b/i;
+
+function isKnowledgeGap(turn) {
+  if (turn.grounded !== false) return false;
+  if (turn.leadTurn) return false;
+  const q = String(turn.q || '').trim();
+  if (q.length < 8) return false;
+  if (SMALL_TALK.test(q)) return false;
+  if (OWN_BOOKING.test(q)) return false;
+  // A bare name, phone number or email is an answer, not a question.
+  const looksLikeContact = PHONE_LIKE.test(q) || EMAIL_LIKE.test(q) || NAME_LIKE(q);
+  if (looksLikeContact && !QUESTION_WORD.test(q)) return false;
+  return true;
+}
+
+function mergeLead(tenant, convId, fields) {
+  if (!Object.keys(fields).length) return null;
+  const required = tenant.settings.leadFields || ['name', 'phone'];
+  let lead = tenant.leads.find((l) => l.conversationId === convId);
+  if (!lead) {
+    lead = { id: store.id(), conversationId: convId, at: new Date().toISOString(), status: 'new' };
+    tenant.leads.unshift(lead);
+  }
+  for (const [k, v] of Object.entries(fields)) if (v) lead[k] = v;
+  lead.updatedAt = new Date().toISOString();
+  lead.complete = isComplete(lead, required);
+  lead.contactable = isContactable(lead);
+  lead.missing = required.filter((f) => !String(lead[f] || '').trim());
+  const conv = tenant.conversations.find((c) => c.id === convId);
+  if (conv?.turns?.length) lead.firstQuestion = conv.turns[0].q;
+  return lead;
+}
 
 function logTurn(tenant, convId, question, answer, meta = {}) {
   let conv = tenant.conversations.find((c) => c.id === convId);
@@ -418,7 +482,7 @@ app.get('/api/admin/:tenantId/overview', requireAdmin, requireTenant, (req, res)
   const usage = store.usageThisMonth(t);
   const since = Date.now() - 30 * 864e5;
   const recent = t.conversations.filter((c) => new Date(c.startedAt).getTime() > since);
-  const unanswered = recent.flatMap((c) => c.turns.filter((x) => x.grounded === false).map((x) => x.q));
+  const unanswered = recent.flatMap((c) => c.turns.filter(isKnowledgeGap).map((x) => x.q));
 
   res.json({
     name: t.name,
@@ -536,7 +600,28 @@ app.get('/api/admin/status', requireAdmin, requireOwner, (req, res) => {
 });
 
 app.get('/api/admin/:tenantId/channels', requireAdmin, requireTenant, (req, res) => {
-  res.json(channelsConfigured(store.load(req.params.tenantId)));
+  res.json(notifyStatus(store.load(req.params.tenantId)));
+});
+
+// Sends a sample lead to whatever is configured. Without this the first real
+// notification is also the first test, and a client finding out it never
+// worked is a bad way to learn.
+app.post('/api/admin/:tenantId/channels/test', requireAdmin, requireTenant, async (req, res) => {
+  const t = store.load(req.params.tenantId);
+  const sample = {
+    name: 'Test Lead',
+    phone: '+15555550123',
+    email: 'test@example.com',
+    intent: 'checking notifications work',
+    firstQuestion: 'This is a test — no action needed.',
+    at: new Date().toISOString(),
+  };
+  try {
+    const results = await notifyLead(t, sample);
+    res.json({ results });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Nightly snapshot, in-process so there is nothing extra to configure. Set

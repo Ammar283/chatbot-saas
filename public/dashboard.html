@@ -58,6 +58,8 @@
   .banner strong { display: block; margin-bottom: 3px; }
   .chan { font-size: 12.5px; color: var(--muted); margin-bottom: 12px; }
   .chan b { color: var(--pine); }
+  .chanWarn { font-size: 12.5px; color: #7A5E1E; background: #FBF4E4; border-left: 3px solid var(--brass);
+              padding: 8px 11px; border-radius: 0 7px 7px 0; margin-bottom: 8px; line-height: 1.45; }
   .panel.danger h2 { color: var(--clay); }
   .crow { display: grid; grid-template-columns: 1fr auto auto auto auto; gap: 12px; align-items: center;
           padding: 11px 0; border-bottom: 1px solid var(--mist); font-size: 13px; }
@@ -307,7 +309,11 @@
           <input type="text" id="sTeaser" placeholder="Questions about treatments? Ask away." />
         </div>
         <div class="field"><label for="sTone">Tone</label><input type="text" id="sTone" /></div>
-        <div class="field"><label for="sLangs">Languages</label><input type="text" id="sLangs" /></div>
+        <div class="field">
+          <label for="sLangs">Languages</label>
+          <div class="hint">The bot replies in whichever of these the visitor writes in. Keep it to English unless a client needs more.</div>
+          <input type="text" id="sLangs" />
+        </div>
         <div class="field">
           <label for="sFacts">What the bot should know</label>
           <div class="hint">Facts that override the website. Put prices, hours and policies here.</div>
@@ -363,7 +369,10 @@
           <input type="text" id="sNotifyHook" placeholder="https://hooks.zapier.com/..." />
         </div>
         <div id="channelState"></div>
-        <button class="btn" id="saveNotify">Save notification settings</button>
+        <div class="row">
+          <button class="btn" id="saveNotify">Save notification settings</button>
+          <button class="btn ghost" id="testNotify">Send a test</button>
+        </div>
       </div>
 
       <div class="panel danger">
@@ -745,13 +754,27 @@ $('#savePw').onclick = async () => {
 
 async function loadChannels() {
   try {
-    const c = await api(`/api/admin/${tenantId}/channels`);
-    const live = Object.entries(c).filter(([, on]) => on).map(([k]) => k);
-    $('#channelState').innerHTML = live.length
-      ? `<p class="chan">Currently sending by <b>${live.join('</b>, <b>')}</b>.</p>`
-      : `<p class="chan">Nothing is being sent yet. Add an address above, and make sure the server has its email or WhatsApp credentials set.</p>`;
+    const st = await api(`/api/admin/${tenantId}/channels`);
+    const live = st.live?.length
+      ? `<p class="chan">Currently sending by <b>${st.live.join('</b>, <b>')}</b>.</p>`
+      : `<p class="chan">Nothing is being sent yet.</p>`;
+    const probs = (st.problems || []).map((p) => `<p class="chanWarn">${escapeHtml(p)}</p>`).join('');
+    $('#channelState').innerHTML = live + probs;
   } catch { /* channel state is a nicety, never block the page for it */ }
 }
+
+$('#testNotify').onclick = async () => {
+  const b = $('#testNotify'); b.disabled = true; b.textContent = 'Sending…';
+  try {
+    const r = await api(`/api/admin/${tenantId}/channels/test`, { method: 'POST' });
+    const sent = r.results.filter((x) => x.sent).map((x) => x.sent);
+    const failed = r.results.filter((x) => x.error);
+    if (sent.length) toast(`Test sent by ${sent.join(', ')}. Check your inbox.`);
+    else if (failed.length) toast(failed[0].error.slice(0, 90));
+    else toast('Nothing is configured to send yet.');
+  } catch (e) { toast(e.message); }
+  b.disabled = false; b.textContent = 'Send a test';
+};
 
 $('#saveNotify').onclick = async () => {
   try {
