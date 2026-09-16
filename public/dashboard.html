@@ -314,6 +314,11 @@
           <textarea id="sFacts"></textarea>
         </div>
         <div class="field">
+          <label for="sBooking">After a booking is captured</label>
+          <div class="hint">Said once every detail is collected. Make it clear the request was recorded.</div>
+          <input type="text" id="sBooking" />
+        </div>
+        <div class="field">
           <label for="sHandoff">When it doesn't know</label>
           <div class="hint">Shown instead of a guess.</div>
           <input type="text" id="sHandoff" />
@@ -604,6 +609,7 @@ function fillSettings(s, publicKey) {
   $('#sBotName').value = s.botName; $('#sGreeting').value = s.greeting; $('#sAccent').value = s.accent;
   $('#sTone').value = s.tone; $('#sLangs').value = s.languages; $('#sFacts').value = s.businessFacts;
   $('#sHandoff').value = s.handoffMessage; $('#sCap').value = s.monthlyMessageCap;
+  $('#sBooking').value = s.bookingConfirmation || '';
   $('#sLogo').value = s.logoUrl || ''; $('#sTeaser').value = s.teaser || '';
   $('#sNotifyEmail').value = s.notifyEmail || ''; $('#sNotifyWa').value = s.notifyWhatsApp || '';
   $('#sNotifyHook').value = s.notifyWebhook || '';
@@ -631,6 +637,7 @@ $('#saveSettings').onclick = async () => {
         botName: $('#sBotName').value, greeting: $('#sGreeting').value, accent: $('#sAccent').value,
         tone: $('#sTone').value, languages: $('#sLangs').value, businessFacts: $('#sFacts').value,
         handoffMessage: $('#sHandoff').value, monthlyMessageCap: Number($('#sCap').value) || 5000,
+        bookingConfirmation: $('#sBooking').value,
         logoUrl: $('#sLogo').value.trim(), teaser: $('#sTeaser').value.trim(),
         leadFields: [...document.querySelectorAll('.leadField:checked')].map((c) => c.value),
         allowedOrigins: $('#sOrigins').value.split('\n').map((x) => x.trim()).filter(Boolean),
