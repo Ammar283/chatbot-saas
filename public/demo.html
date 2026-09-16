@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Demo page — widget preview</title>
+<style>
+  body { font-family: ui-sans-serif, system-ui, sans-serif; max-width: 620px; margin: 60px auto; padding: 0 22px; color: #1a1d1a; line-height: 1.6; }
+  h1 { font-size: 27px; letter-spacing: -.02em; }
+  code { background: #eef1ec; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  .note { background: #eef1ec; border-left: 3px solid #1B3A2F; padding: 14px 16px; border-radius: 0 8px 8px 0; margin: 22px 0; }
+  input { width: 100%; padding: 9px 11px; border: 1px solid #d8ddd3; border-radius: 8px; margin-top: 6px; }
+  button { background: #1B3A2F; color: #fff; border: 0; padding: 9px 17px; border-radius: 8px; margin-top: 10px; cursor: pointer; }
+</style>
+</head>
+<body>
+  <h1>Widget preview</h1>
+  <p>This blank page stands in for a client's website. Paste a workspace key below and the widget loads in the corner, exactly as it will on their real site.</p>
+
+  <div class="note">
+    <strong>Use this for sales.</strong> Crawl a prospect's website into a workspace, open this page, record 60 seconds of the bot answering questions about <em>their</em> business, and send them the clip. It converts far better than a pitch.
+  </div>
+
+  <label for="k">Workspace key</label>
+  <input id="k" placeholder="pk_..." />
+  <button onclick="load()">Load widget</button>
+
+  <p style="margin-top:30px;color:#5F6860;font-size:13.5px">On a real site the install is one line before <code>&lt;/body&gt;</code>:<br>
+  <code>&lt;script src="/widget.js" data-key="pk_..." defer&gt;&lt;/script&gt;</code></p>
+
+<script>
+function load() {
+  const key = document.getElementById('k').value.trim();
+  if (!key) return;
+  const s = document.createElement('script');
+  s.src = '/widget.js';
+  s.dataset.key = key;
+  document.body.appendChild(s);
+}
+const q = new URLSearchParams(location.search).get('key');
+if (q) { document.getElementById('k').value = q; load(); }
+</script>
+</body>
+</html>

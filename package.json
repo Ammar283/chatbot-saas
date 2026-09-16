@@ -1,0 +1,21 @@
+{
+  "name": "chatbot-saas",
+  "version": "0.1.0",
+  "description": "Multi-tenant AI chatbot for websites, WhatsApp and Instagram, with an owner dashboard.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "backup": "node scripts/backup.js --upload",
+    "restore": "node scripts/backup.js --restore"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}
