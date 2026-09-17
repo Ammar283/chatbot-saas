@@ -116,7 +116,12 @@ app.get('/api/config/:publicKey', (req, res) => {
   const tenant = store.findByPublicKey(req.params.publicKey);
   if (!tenant) return res.status(404).json({ error: 'Unknown workspace key.' });
   const s = tenant.settings;
-  res.json({ botName: s.botName, greeting: s.greeting, accent: s.accent, logoUrl: s.logoUrl || '', teaser: s.teaser || '', tenant: tenant.name });
+  res.json({
+    botName: s.botName, greeting: s.greeting, accent: s.accent,
+    logoUrl: s.logoUrl || '', teaser: s.teaser || '',
+    autoOpenSeconds: Number(s.autoOpenSeconds) || 0,
+    tenant: tenant.name,
+  });
 });
 
 app.post('/api/chat', async (req, res) => {

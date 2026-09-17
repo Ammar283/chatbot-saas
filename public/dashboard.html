@@ -33,7 +33,9 @@
           position: sticky; top: 0; height: 100vh; overflow-y: auto; }
   .brand { font-family: var(--display); font-weight: 700; font-size: 19px; letter-spacing: -.02em; color: #fff; line-height: 1.15; }
   .brand em { display: block; font-style: normal; font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; opacity: .55; margin-top: 5px; }
-  .brand img { max-width: 100%; max-height: 42px; object-fit: contain; display: block; margin-bottom: 8px; }
+  .brand img { max-width: 100%; max-height: 46px; object-fit: contain; object-position: left; display: block; margin-bottom: 9px; }
+  .dashLogoPrev { max-width: 200px; max-height: 52px; object-fit: contain; object-position: left;
+                  border: 1px solid var(--mist); border-radius: 9px; padding: 8px 10px; margin-top: 8px; background: var(--pine); display: block; }
   .rail label { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; opacity: .55; display: block; margin-bottom: 7px; }
   .rail select, .rail input { width: 100%; background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.16); color: #fff; border-radius: 7px; padding: 8px 10px; }
   .rail select option { color: #000; }
@@ -385,12 +387,23 @@
           <input type="text" id="sDashAccent" placeholder="#1B3A2F" />
         </div>
         <div class="field">
-          <label for="sLogo">Logo image address</label>
-          <div class="hint">Shown in the chat header. Paste a direct link to a square image, ideally 128&times;128 or larger.</div>
-          <input type="text" id="sLogo" placeholder="https://example.com/logo.png" />
+          <label for="sDashLogo">Dashboard logo</label>
+          <div class="hint">Shown at the top of this sidebar. A wide logo works well here. Leave empty to show the name as text.</div>
+          <input type="text" id="sDashLogo" placeholder="https://example.com/full-logo.png" />
+          <div id="dashLogoPreview"></div>
+        </div>
+        <div class="field">
+          <label for="sLogo">Chat avatar</label>
+          <div class="hint">The small square image in the chat header. A logo mark or icon, ideally 128&times;128 or larger.</div>
+          <input type="text" id="sLogo" placeholder="https://example.com/icon.png" />
           <div id="logoPreview"></div>
         </div>
         <div class="field"><label for="sAccent">Accent colour</label><input type="text" id="sAccent" placeholder="#1B3A2F" /></div>
+        <div class="field">
+          <label for="sAutoOpen">Open the chat automatically after</label>
+          <div class="hint">Seconds. 0 keeps it closed until the visitor clicks. Never opens itself on a phone, where it would cover the page.</div>
+          <input type="text" id="sAutoOpen" placeholder="0" />
+        </div>
         <div class="field">
           <label for="sTeaser">Nudge message</label>
           <div class="hint">Pops up beside the bubble after 12 seconds. Leave empty to switch it off.</div>
@@ -533,8 +546,12 @@ $('#tenant').addEventListener('change', () => {
   loadOverview();
 });
 
-async function loadTenants(select) {
+// A refresh that lands on an empty sidebar looks like lost data. One transient
+// failure should not leave the page in that state, so this retries once and
+// says plainly what happened if it still fails.
+async function loadTenants(select, attempt = 0) {
   try {
+    $('#tenantLine').textContent = attempt ? 'Reconnecting…' : 'Loading your workspaces…';
     const list = await api('/api/admin/tenants');
     $('#tenant').innerHTML = list.length
       ? list.map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('')
@@ -549,7 +566,12 @@ async function loadTenants(select) {
       tenantId = null;
       $('#tenantLine').textContent = 'Create your first workspace to begin.';
     }
-  } catch (e) { toast(e.message); }
+  } catch (e) {
+    if (attempt < 1) return setTimeout(() => loadTenants(select, attempt + 1), 900);
+    $('#tenantLine').innerHTML = `Could not load your workspaces. <a href="#" id="retryLoad">Try again</a>`;
+    $('#retryLoad')?.addEventListener('click', (ev) => { ev.preventDefault(); loadTenants(select); });
+    toast(e.message);
+  }
 }
 
 // --- create workspace ---
@@ -589,15 +611,13 @@ async function loadOverview() {
     $('#menuWs').textContent = o.name;
     $('#menuDot').hidden = !o.newLeads;
     $('#menuDot').textContent = o.newLeads ? `${o.newLeads} new` : '';
-    // Cost and cache are your business, not the client's. Add ?owner=1 to see them.
-    const OWNER = new URLSearchParams(location.search).has('owner');
+    // Four numbers a business owner cares about. Running costs and cache rates
+    // are operator concerns — they belong on My clients, not in front of a client.
     $('#stats').innerHTML = `
       ${stat('Leads captured', o.leads, `${o.newLeads} not yet contacted`, true)}
       ${stat('Complete details', o.completeLeads ?? 0, 'name, phone and email')}
       ${stat('Conversations', o.conversations, 'last 30 days')}
-      ${stat('Questions answered', o.messages, 'without anyone stepping in')}
-      ${OWNER ? stat('Served from cache', o.cacheHitRate + '%', 'answered at zero cost') : ''}
-      ${OWNER ? stat('Your API cost', '$' + o.estimatedCostUsd, 'this month, all traffic') : ''}`;
+      ${stat('Questions answered', o.messages, 'without anyone stepping in')}`;
     $('#gaps').innerHTML = o.unanswered.length
       ? o.unanswered.map((q) => `<div class="gap">${escapeHtml(q)}</div>`).join('')
       : `<div class="empty"><strong>Nothing missed yet</strong>The bot found an answer for every question it received.</div>`;
@@ -713,6 +733,8 @@ function fillSettings(s, publicKey) {
   $('#sBooking').value = s.bookingConfirmation || '';
   $('#sLogo').value = s.logoUrl || ''; $('#sTeaser').value = s.teaser || '';
   $('#sBrandName').value = s.brandName || ''; $('#sDashAccent').value = s.dashboardAccent || '';
+  $('#sDashLogo').value = s.dashboardLogoUrl || ''; $('#sAutoOpen').value = s.autoOpenSeconds ?? 0;
+  paintDashLogo();
   $('#sNotifyEmail').value = s.notifyEmail || ''; $('#sNotifyWa').value = s.notifyWhatsApp || '';
   $('#sNotifyHook').value = s.notifyWebhook || '';
   loadChannels();
@@ -730,7 +752,9 @@ function applyBranding(s) {
   const name = (s.brandName || '').trim();
   $('#brandName').textContent = name || 'Front Desk';
   document.title = `${name || 'Front Desk'} — chatbot console`;
-  const logo = (s.logoUrl || '').trim();
+  // The sidebar takes a wide logo; the chat header takes a square avatar. One
+  // image cannot do both well, so they are set separately.
+  const logo = (s.dashboardLogoUrl || '').trim();
   const img = $('#brandLogo');
   if (logo) { img.src = logo; img.hidden = false; img.onerror = () => { img.hidden = true; }; }
   else img.hidden = true;
@@ -746,6 +770,14 @@ function paintLogo() {
 }
 $('#sLogo').addEventListener('input', paintLogo);
 
+function paintDashLogo() {
+  const u = $('#sDashLogo').value.trim();
+  $('#dashLogoPreview').innerHTML = u
+    ? `<img src="${escapeHtml(u)}" alt="Dashboard logo preview" class="dashLogoPrev" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'flag',textContent:'that address did not load'}))" />`
+    : '';
+}
+$('#sDashLogo').addEventListener('input', paintDashLogo);
+
 $('#saveSettings').onclick = async () => {
   try {
     await api(`/api/admin/${tenantId}/settings`, {
@@ -757,6 +789,8 @@ $('#saveSettings').onclick = async () => {
         bookingConfirmation: $('#sBooking').value,
         logoUrl: $('#sLogo').value.trim(), teaser: $('#sTeaser').value.trim(),
         brandName: $('#sBrandName').value.trim(), dashboardAccent: $('#sDashAccent').value.trim(),
+        dashboardLogoUrl: $('#sDashLogo').value.trim(),
+        autoOpenSeconds: Math.max(0, Math.min(120, Number($('#sAutoOpen').value) || 0)),
         leadFields: [...document.querySelectorAll('.leadField:checked')].map((c) => c.value),
         allowedOrigins: $('#sOrigins').value.split('\n').map((x) => x.trim()).filter(Boolean),
       }),
@@ -930,7 +964,7 @@ $('#exportCsv').onclick = async () => {
 
 // Poll while the tab is visible. Cheap — these routes only read local JSON.
 setInterval(() => {
-  if (!tenantId || document.hidden) return;
+  if (!tenantId || document.hidden || !me) return;
   const view = document.querySelector('.nav button[aria-current="true"]')?.dataset.view;
   loadOverview();
   if (view === 'leads') loadLeads();

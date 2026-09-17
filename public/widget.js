@@ -14,7 +14,10 @@
   if (!KEY) return console.warn('[chat widget] Missing data-key attribute.');
 
   const STORE = 'fd_chat_' + KEY;
-  let config = { botName: 'Assistant', greeting: 'Hi. How can I help?', accent: '#1B3A2F', logoUrl: '', teaser: '' };
+  let config = { botName: 'Assistant', greeting: 'Hi. How can I help?', accent: '#1B3A2F', logoUrl: '', teaser: '', autoOpenSeconds: 0 };
+  // Auto-opening a full-screen panel on a phone hijacks the page before the
+  // visitor has read anything, so this is desktop only.
+  const isPhone = matchMedia('(max-width: 520px)').matches;
   let conversationId = null;
   let history = [];
   let suggestions = [];
@@ -123,11 +126,27 @@
         .bar button:disabled { opacity: .45; cursor: default; }
         .foot { text-align: center; font-size: 10.5px; color: #9aa0a6; padding: 0 0 8px; background: #fff; }
 
-        /* Phones: full screen. A 380px panel on a 360px viewport is unusable. */
+        /* Phones: full screen. A 380px panel on a 360px viewport is unusable,
+           and a floating launcher on top of a full-screen panel just covers
+           the last message — the header's own close button is enough. */
         @media (max-width: 520px) {
-          .panel { inset: 0; width: 100%; max-width: 100%; height: 100%; max-height: 100%; border-radius: 0; }
+          .panel {
+            inset: 0; width: 100%; max-width: 100%; height: 100%; max-height: 100%;
+            height: 100dvh; border-radius: 0; border: 0;
+          }
+          .panel.open ~ .launcher { display: none; }
+          .head { padding: 15px 16px; padding-top: max(15px, env(safe-area-inset-top)); }
+          .close { font-size: 26px; padding: 6px 10px; }
+          .log { padding: 14px; gap: 11px; }
+          .msg { max-width: 88%; font-size: 15px; }
+          .bar { padding: 11px; padding-bottom: max(11px, env(safe-area-inset-bottom)); }
+          /* 16px stops iOS Safari zooming the page every time the field is tapped. */
+          .bar input { font-size: 16px; padding: 12px 13px; }
+          .bar button { padding: 0 18px; }
+          .chip { padding: 9px 14px; font-size: 13.5px; }
           .launcher { bottom: 16px; right: 16px; }
-          .teaser { right: 16px; bottom: 84px; }
+          .teaser { right: 16px; bottom: 84px; max-width: min(250px, calc(100vw - 32px)); }
+          .foot { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
         }
         @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
       </style>
@@ -247,5 +266,23 @@
     .then((r) => r.json())
     .then((c) => { if (!c.error) config = { ...config, ...c }; })
     .catch(() => {})
-    .finally(() => { render(); setTimeout(showTeaser, 12000); });
+    .finally(() => {
+      render();
+      const delay = Number(config.autoOpenSeconds) || 0;
+      if (delay > 0 && !isPhone) {
+        // Once per visit only. A panel that reopens on every page view is the
+        // fastest way to make someone leave the site.
+        let already = false;
+        try { already = sessionStorage.getItem(STORE + '_opened') === '1'; } catch {}
+        if (!already && !history.length) {
+          setTimeout(() => {
+            if (open || busy) return;
+            try { sessionStorage.setItem(STORE + '_opened', '1'); } catch {}
+            toggle();
+          }, delay * 1000);
+          return;                       // teaser would be redundant
+        }
+      }
+      setTimeout(showTeaser, 12000);
+    });
 })();
