@@ -33,6 +33,7 @@
           position: sticky; top: 0; height: 100vh; overflow-y: auto; }
   .brand { font-family: var(--display); font-weight: 700; font-size: 19px; letter-spacing: -.02em; color: #fff; line-height: 1.15; }
   .brand em { display: block; font-style: normal; font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; opacity: .55; margin-top: 5px; }
+  .brand img { max-width: 100%; max-height: 42px; object-fit: contain; display: block; margin-bottom: 8px; }
   .rail label { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; opacity: .55; display: block; margin-bottom: 7px; }
   .rail select, .rail input { width: 100%; background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.16); color: #fff; border-radius: 7px; padding: 8px 10px; }
   .rail select option { color: #000; }
@@ -156,19 +157,88 @@
   .empty strong { display: block; font-family: var(--display); font-size: 17px; color: var(--ink); margin-bottom: 5px; }
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
   .toast.on { opacity: 1; }
-  @media (max-width: 820px) {
+  /* ---- mobile ----
+     A lead notification arrives on the owner's phone, they tap through and
+     need to call back. Phone is the primary surface for this product, not an
+     afterthought, so the whole shell reflows rather than just shrinking. */
+  .menuBtn { display: none; }
+  .scrim { display: none; }
+
+  @media (max-width: 860px) {
     .shell { grid-template-columns: 1fr; }
-    .rail { flex-direction: column; }
-    .nav { flex-direction: row; overflow-x: auto; margin-top: 8px; }
-    .main { padding: 22px 16px 50px; }
+
+    /* Rail becomes a drawer. Sticky full-height sidebars are unusable on a
+       phone — they eat the screen and trap scrolling. */
+    .rail {
+      position: fixed; inset: 0 auto 0 0; width: 268px; max-width: 84vw; height: 100%;
+      transform: translateX(-100%); transition: transform .22s ease; z-index: 60;
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
+    }
+    .rail.open { transform: none; }
+    .scrim { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.42); z-index: 55;
+             opacity: 0; pointer-events: none; transition: opacity .22s; }
+    .scrim.on { opacity: 1; pointer-events: auto; }
+
+    .menuBtn {
+      display: flex; align-items: center; gap: 9px; position: sticky; top: 0; z-index: 40;
+      width: 100%; background: var(--pine); color: #fff; border: 0; padding: 13px 16px;
+      font-size: 15px; font-weight: 600; font-family: var(--display); cursor: pointer;
+      margin: -22px -16px 18px; width: calc(100% + 32px);
+    }
+    .menuBtn .ws { font-family: var(--body); font-weight: 400; font-size: 12.5px; opacity: .75; }
+    .menuBtn .dot { margin-left: auto; background: var(--brass); color: #1A1206; font-size: 11px;
+                    font-weight: 700; border-radius: 999px; padding: 2px 8px; font-family: var(--mono); }
+
+    .main { padding: 22px 16px 60px; max-width: 100%; }
+    h1 { font-size: 22px; }
+    .sub { font-size: 13.5px; }
+
+    /* Two stat cards per row reads better than one tall column. */
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-bottom: 22px; }
+    .stat { padding: 12px 13px; }
+    .stat .v { font-size: 23px; }
+    .stat .k { font-size: 9px; letter-spacing: .08em; }
+    .stat .n { font-size: 10.5px; }
+
+    .panel { padding: 15px 14px; border-radius: 10px; }
+    .slips { grid-template-columns: 1fr; gap: 13px; }
+
+    /* Tap targets. Anything under ~44px gets mis-tapped on a phone. */
+    .slip .acts a, .slip .acts button { padding: 11px 8px; font-size: 13px; }
+    .btn { padding: 11px 16px; }
+    .field input[type=text], .field textarea, .field select, .bar input { font-size: 16px; }
+
+    .row { flex-direction: column; align-items: stretch; }
+    .row .btn, .row input, .row select, .row textarea { width: 100%; }
+
+    /* Client table: label each cell instead of squeezing five columns. */
+    .crow { grid-template-columns: 1fr; gap: 6px; padding: 13px 0; }
+    .crow .num { text-align: left; font-size: 12.5px; }
+    .crow .num::after { content: attr(data-label); margin-left: 5px; color: var(--muted); font-family: var(--body); }
+    .crow .num small { display: none; }
+    .crow .btn { width: 100%; margin-top: 6px; }
+
+    pre { font-size: 11px; padding: 11px; }
+    .conv summary { flex-direction: column; align-items: flex-start; gap: 4px; }
+    .toast { left: 16px; right: 16px; transform: none; text-align: center; bottom: 16px; }
   }
+
+  @media (max-width: 420px) {
+    .stats { grid-template-columns: 1fr; }
+    .main { padding: 18px 12px 60px; }
+  }
+
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } .slip { transform: none !important; } }
 </style>
 </head>
 <body>
+<div class="scrim" id="scrim"></div>
 <div class="shell">
-  <aside class="rail">
-    <div class="brand">Front Desk<em>chatbot console</em></div>
+  <aside class="rail" id="rail">
+    <div class="brand" id="brand">
+      <img id="brandLogo" alt="" hidden />
+      <span id="brandName">Front Desk</span><em>chatbot console</em>
+    </div>
     <div class="who">
       <div class="whoName" id="whoName">&nbsp;</div>
       <button class="linkish" id="signOut" type="button">Sign out</button>
@@ -200,6 +270,14 @@
   </aside>
 
   <main class="main">
+    <button class="menuBtn" id="menuBtn" type="button" aria-label="Open menu" aria-expanded="false">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+        <path d="M4 7h16M4 12h16M4 17h16"/>
+      </svg>
+      <span id="menuLabel">Overview</span>
+      <span class="ws" id="menuWs"></span>
+      <span class="dot" id="menuDot" hidden></span>
+    </button>
     <!-- OVERVIEW -->
     <section class="view on" id="v-overview">
       <h1>This month at a glance</h1>
@@ -296,6 +374,16 @@
       <div class="panel">
         <div class="field"><label for="sBotName">Bot name</label><input type="text" id="sBotName" /></div>
         <div class="field"><label for="sGreeting">Opening line</label><input type="text" id="sGreeting" /></div>
+        <div class="field">
+          <label for="sBrandName">Name shown in this dashboard</label>
+          <div class="hint">Leave empty to show &ldquo;Front Desk&rdquo;. Set it to the client&rsquo;s business name, or your agency&rsquo;s.</div>
+          <input type="text" id="sBrandName" placeholder="Karma Dentistry" />
+        </div>
+        <div class="field">
+          <label for="sDashAccent">Dashboard colour</label>
+          <div class="hint">Leave empty to match the chat widget colour.</div>
+          <input type="text" id="sDashAccent" placeholder="#1B3A2F" />
+        </div>
         <div class="field">
           <label for="sLogo">Logo image address</label>
           <div class="hint">Shown in the chat header. Paste a direct link to a square image, ideally 128&times;128 or larger.</div>
@@ -498,6 +586,9 @@ async function loadOverview() {
     const o = overview;
     $('#tenantLine').textContent = `${o.name} — ${o.chunks} passages in the knowledge base`;
     $('#leadCount').textContent = o.newLeads ? o.newLeads : '';
+    $('#menuWs').textContent = o.name;
+    $('#menuDot').hidden = !o.newLeads;
+    $('#menuDot').textContent = o.newLeads ? `${o.newLeads} new` : '';
     // Cost and cache are your business, not the client's. Add ?owner=1 to see them.
     const OWNER = new URLSearchParams(location.search).has('owner');
     $('#stats').innerHTML = `
@@ -510,6 +601,7 @@ async function loadOverview() {
     $('#gaps').innerHTML = o.unanswered.length
       ? o.unanswered.map((q) => `<div class="gap">${escapeHtml(q)}</div>`).join('')
       : `<div class="empty"><strong>Nothing missed yet</strong>The bot found an answer for every question it received.</div>`;
+    applyBranding(o.settings);
     $('#accessPanel').hidden = !o.clientKey;
     if (o.clientKey) $('#clientKey').textContent = o.clientKey;
     fillSettings(o.settings, o.publicKey);
@@ -620,6 +712,7 @@ function fillSettings(s, publicKey) {
   $('#sHandoff').value = s.handoffMessage; $('#sCap').value = s.monthlyMessageCap;
   $('#sBooking').value = s.bookingConfirmation || '';
   $('#sLogo').value = s.logoUrl || ''; $('#sTeaser').value = s.teaser || '';
+  $('#sBrandName').value = s.brandName || ''; $('#sDashAccent').value = s.dashboardAccent || '';
   $('#sNotifyEmail').value = s.notifyEmail || ''; $('#sNotifyWa').value = s.notifyWhatsApp || '';
   $('#sNotifyHook').value = s.notifyWebhook || '';
   loadChannels();
@@ -628,6 +721,21 @@ function fillSettings(s, publicKey) {
   document.querySelectorAll('.leadField').forEach((c) => { c.checked = fields.includes(c.value); });
   paintLogo();
   $('#snippet').textContent = `<script src="${API}/widget.js" data-key="${publicKey}" defer><\/script>`;
+}
+
+// White-label: the client sees their own name, logo and colour. Cheap to
+// build, and it changes the dashboard from "a tool my supplier uses" into
+// "our system" — which is what renewals are actually made of.
+function applyBranding(s) {
+  const name = (s.brandName || '').trim();
+  $('#brandName').textContent = name || 'Front Desk';
+  document.title = `${name || 'Front Desk'} — chatbot console`;
+  const logo = (s.logoUrl || '').trim();
+  const img = $('#brandLogo');
+  if (logo) { img.src = logo; img.hidden = false; img.onerror = () => { img.hidden = true; }; }
+  else img.hidden = true;
+  const accent = (s.dashboardAccent || s.accent || '').trim();
+  if (/^#[0-9a-f]{3,8}$/i.test(accent)) document.documentElement.style.setProperty('--pine', accent);
 }
 
 function paintLogo() {
@@ -648,11 +756,13 @@ $('#saveSettings').onclick = async () => {
         handoffMessage: $('#sHandoff').value, monthlyMessageCap: Number($('#sCap').value) || 5000,
         bookingConfirmation: $('#sBooking').value,
         logoUrl: $('#sLogo').value.trim(), teaser: $('#sTeaser').value.trim(),
+        brandName: $('#sBrandName').value.trim(), dashboardAccent: $('#sDashAccent').value.trim(),
         leadFields: [...document.querySelectorAll('.leadField:checked')].map((c) => c.value),
         allowedOrigins: $('#sOrigins').value.split('\n').map((x) => x.trim()).filter(Boolean),
       }),
     });
     toast('Settings saved.');
+    loadOverview();   // branding may have changed
   } catch (e) { toast(e.message); }
 };
 
@@ -674,9 +784,9 @@ async function loadClients() {
     $('#clientRows').innerHTML = d.rows.length ? d.rows.map((r) => `
       <div class="crow">
         <div><strong>${escapeHtml(r.name)}</strong><small>${escapeHtml(r.account || 'no login yet')} · ${r.chunks} passages</small></div>
-        <div class="num">${r.leads}<small>leads</small></div>
-        <div class="num">${r.messages}<small>msgs</small></div>
-        <div class="num">${r.capUsedPct}%<small>of cap</small></div>
+        <div class="num" data-label="leads">${r.leads}<small>leads</small></div>
+        <div class="num" data-label="messages">${r.messages}<small>msgs</small></div>
+        <div class="num" data-label="of cap">${r.capUsedPct}%<small>of cap</small></div>
         <span class="pill ${r.health === 'active' ? 'active' : r.health === 'quiet' ? 'quiet' : r.health === 'at risk' ? 'risk' : 'cold'}">${r.health}</span>
       </div>`).join('')
       : `<div class="empty"><strong>No workspaces yet</strong>Create one from the sidebar.</div>`;
