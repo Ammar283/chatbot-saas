@@ -773,6 +773,57 @@ function applyBranding(s) {
   else img.hidden = true;
   const accent = (s.dashboardAccent || s.accent || '').trim();
   if (/^#[0-9a-f]{3,8}$/i.test(accent)) document.documentElement.style.setProperty('--pine', accent);
+
+  const highlight = (s.dashboardHighlight || '').trim();
+  if (/^#[0-9a-f]{3,8}$/i.test(highlight)) {
+    document.documentElement.style.setProperty('--brass', highlight);
+    document.documentElement.style.setProperty('--onBrass', readableOn(highlight));
+  }
+
+  // Remember it, so the next page load paints the client's brand immediately
+  // instead of flashing the default green first.
+  try {
+    localStorage.setItem('brand:' + tenantId, JSON.stringify({
+      brandName: name, dashboardLogoUrl: logo,
+      dashboardAccent: accent, dashboardHighlight: highlight,
+    }));
+  } catch {}
+}
+
+// Dark text on a light colour, light text on a dark one, so a client cannot
+// pick a highlight that makes the selected menu item unreadable.
+function readableOn(hex) {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h.slice(0, 6);
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+  return (r * 299 + g * 587 + b * 114) / 1000 > 145 ? '#1A1206' : '#FFFFFF';
+}
+
+function applyBrandVars(b) {
+  if (b.brandName) {
+    $('#brandName').textContent = b.brandName;
+    document.title = `${b.brandName} — chatbot console`;
+  }
+  if (b.dashboardLogoUrl) {
+    const i = $('#brandLogo');
+    i.src = b.dashboardLogoUrl; i.hidden = false; i.onerror = () => { i.hidden = true; };
+  }
+  if (/^#[0-9a-f]{3,8}$/i.test(b.dashboardAccent || '')) {
+    document.documentElement.style.setProperty('--pine', b.dashboardAccent);
+  }
+  if (/^#[0-9a-f]{3,8}$/i.test(b.dashboardHighlight || '')) {
+    document.documentElement.style.setProperty('--brass', b.dashboardHighlight);
+    document.documentElement.style.setProperty('--onBrass', readableOn(b.dashboardHighlight));
+  }
+}
+
+// Branding must never be able to break the page, so this is wrapped whole.
+function restoreBrand() {
+  try {
+    const ws = localStorage.getItem('ws') || '';
+    const cached = JSON.parse(localStorage.getItem('brand:' + ws) || 'null');
+    if (cached) applyBrandVars(cached);
+  } catch {}
 }
 
 function paintLogo() {
