@@ -300,6 +300,10 @@ function mergeLead(tenant, convId, fields) {
   if (!Object.keys(fields).length) return null;
   const required = tenant.settings.leadFields || ['name', 'phone'];
   let lead = tenant.leads.find((l) => l.conversationId === convId);
+  // "Wants: appointment" with no name, phone or email is not a lead — it is a
+  // row the client cannot act on. Wait for something identifying before
+  // creating one; intent alone is kept for when that arrives.
+  if (!lead && !(fields.name || fields.phone || fields.email)) return null;
   if (!lead) {
     lead = { id: store.id(), conversationId: convId, at: new Date().toISOString(), status: 'new' };
     tenant.leads.unshift(lead);
@@ -488,7 +492,13 @@ app.get('/api/admin/:tenantId/overview', requireAdmin, requireTenant, (req, res)
   const usage = store.usageThisMonth(t);
   const since = Date.now() - 30 * 864e5;
   const recent = t.conversations.filter((c) => new Date(c.startedAt).getTime() > since);
-  const unanswered = recent.flatMap((c) => c.turns.filter(isKnowledgeGap).map((x) => x.q));
+  // Some gaps get answered in "What the bot should know" and some are simply
+  // not worth chasing. Dismissed ones stay dismissed so the list keeps meaning
+  // something rather than becoming a wall the client scrolls past.
+  const dismissed = new Set(t.dismissedGaps || []);
+  const unanswered = recent
+    .flatMap((c) => c.turns.filter(isKnowledgeGap).map((x) => x.q))
+    .filter((q) => !dismissed.has(q));
 
   res.json({
     name: t.name,
@@ -510,8 +520,27 @@ app.get('/api/admin/:tenantId/overview', requireAdmin, requireTenant, (req, res)
   });
 });
 
+app.post('/api/admin/:tenantId/gaps/dismiss', requireAdmin, requireTenant, (req, res) => {
+  const t = store.load(req.params.tenantId);
+  const q = String(req.body?.question || '').trim();
+  if (!q) return res.status(400).json({ error: 'No question given.' });
+  t.dismissedGaps = [...new Set([...(t.dismissedGaps || []), q])].slice(-500);
+  store.save(t.id);
+  store.flush();
+  res.json({ ok: true });
+});
+
 app.get('/api/admin/:tenantId/leads', requireAdmin, requireTenant, (req, res) => {
   res.json(store.load(req.params.tenantId).leads.slice(0, 200));
+});
+
+app.delete('/api/admin/:tenantId/leads/:leadId', requireAdmin, requireTenant, (req, res) => {
+  const t = store.load(req.params.tenantId);
+  const before = t.leads.length;
+  t.leads = t.leads.filter((l) => l.id !== req.params.leadId);
+  store.save(t.id);
+  store.flush();
+  res.json({ ok: true, removed: before - t.leads.length });
 });
 
 app.patch('/api/admin/:tenantId/leads/:leadId', requireAdmin, requireTenant, (req, res) => {
@@ -580,6 +609,21 @@ app.post('/api/admin/:tenantId/ingest/text', requireAdmin, requireTenant, async 
   store.save(t.id);
   store.flush();
   res.json({ chunks: chunks.length, total: t.chunks.length });
+});
+
+// Clears test leads and conversations but keeps the knowledge base and every
+// setting. Before a client demo you want the activity wiped, not the hours of
+// crawling and branding that make the thing look finished.
+app.delete('/api/admin/:tenantId/activity', requireAdmin, requireTenant, (req, res) => {
+  const t = store.load(req.params.tenantId);
+  const removed = { leads: t.leads.length, conversations: t.conversations.length };
+  t.leads = [];
+  t.conversations = [];
+  t.cache = [];
+  t.usage = {};
+  store.save(t.id);
+  store.flush();
+  res.json({ ok: true, removed });
 });
 
 app.get('/api/admin/:tenantId/knowledge', requireAdmin, requireTenant, (req, res) => {

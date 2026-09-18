@@ -30,7 +30,7 @@
 
   /* ---- shell ---- */
   .shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
-  .rail { background: var(--pine); color: #E8EDE6; padding: 22px 16px; display: flex; flex-direction: column; gap: 22px;
+  .rail { background: var(--pine); color: #E8EDE6; padding: 22px 16px 34px; display: flex; flex-direction: column; gap: 22px;
           position: sticky; top: 0; height: 100vh; overflow-y: auto; }
   .brand { font-family: var(--display); font-weight: 700; font-size: 19px; letter-spacing: -.02em; color: #fff; line-height: 1.15; }
   .brand em { display: block; font-style: normal; font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; opacity: .55; margin-top: 5px; }
@@ -40,7 +40,7 @@
   .rail label { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; opacity: .55; display: block; margin-bottom: 7px; }
   .rail select, .rail input { width: 100%; background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.16); color: #fff; border-radius: 7px; padding: 8px 10px; }
   .rail select option { color: #000; }
-  .nav { display: flex; flex-direction: column; gap: 2px; }
+  .nav { display: flex; flex-direction: column; gap: 2px; padding-bottom: 18px; }
   .addWs { width: 100%; margin-top: 7px; background: none; border: 1px dashed rgba(255,255,255,.3); color: #C9D3C6;
            border-radius: 7px; padding: 7px; cursor: pointer; font-size: 12.5px; }
   .addWs:hover { border-color: var(--brass); color: var(--brass); }
@@ -145,7 +145,14 @@
   .logoPrev { width: 46px; height: 46px; object-fit: cover; border-radius: 9px; border: 1px solid var(--mist); margin-top: 8px; background: #fff; }
 
   /* ---- lists ---- */
-  .gap { border-left: 3px solid var(--clay); background: #fff; border-radius: 0 8px 8px 0; padding: 10px 13px; margin-bottom: 7px; }
+  .gap { border-left: 3px solid var(--clay); background: #fff; border-radius: 0 8px 8px 0; padding: 10px 13px;
+         margin-bottom: 7px; display: flex; align-items: center; gap: 10px; }
+  .gap span { flex: 1; }
+  .gapX, .slipX { background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 18px; line-height: 1;
+                  padding: 2px 6px; border-radius: 6px; opacity: .45; transition: opacity .15s, color .15s; }
+  .gapX:hover, .slipX:hover { opacity: 1; color: var(--clay); background: rgba(168,65,47,.08); }
+  .slipX { position: absolute; top: 6px; right: 7px; }
+  .slip:hover .slipX { opacity: .7; }
   .conv { border: 1px solid var(--mist); border-radius: 9px; background: #fff; margin-bottom: 9px; overflow: hidden; }
   .conv summary { padding: 11px 14px; cursor: pointer; display: flex; justify-content: space-between; gap: 10px; }
   .conv .turns { padding: 4px 14px 14px; border-top: 1px solid var(--mist); }
@@ -487,6 +494,12 @@
         </div>
       </div>
 
+      <div class="panel">
+        <h2>Clear test activity</h2>
+        <p class="sub">Removes leads, conversations and counters so the dashboard starts from zero. Your knowledge base, branding and settings are all kept.</p>
+        <button class="btn ghost" id="clearActivity">Clear leads and conversations</button>
+      </div>
+
       <div class="panel danger">
         <h2>Delete this workspace</h2>
         <p class="sub">Removes the chatbot, its knowledge and its leads. It is archived, not erased &mdash; ask us if you need it back.</p>
@@ -636,9 +649,19 @@ async function loadOverview() {
       ${stat('Conversations', o.conversations, 'last 30 days')}
       ${stat('Questions answered', o.messages, 'without anyone stepping in')}`;
     $('#gaps').innerHTML = o.unanswered.length
-      ? o.unanswered.map((q) => `<div class="gap">${escapeHtml(q)}</div>`).join('')
+      ? o.unanswered.map((q) => `<div class="gap"><span>${escapeHtml(q)}</span>
+          <button class="gapX" data-gap="${escapeHtml(q)}" aria-label="Dismiss this question" title="Dismiss">&times;</button></div>`).join('')
       : `<div class="empty"><strong>Nothing missed yet</strong>The bot found an answer for every question it received.</div>`;
     applyBranding(o.settings);
+    document.querySelectorAll('[data-gap]').forEach((b) => {
+      b.onclick = async () => {
+        b.closest('.gap').style.opacity = '.4';
+        try {
+          await api(`/api/admin/${tenantId}/gaps/dismiss`, { method: 'POST', body: JSON.stringify({ question: b.dataset.gap }) });
+          loadOverview();
+        } catch (e) { toast(e.message); }
+      };
+    });
     $('#accessPanel').hidden = !o.clientKey;
     if (o.clientKey) $('#clientKey').textContent = o.clientKey;
     fillSettings(o.settings, o.publicKey);
@@ -655,6 +678,15 @@ async function loadLeads() {
   const leads = await api(`/api/admin/${tenantId}/leads`);
   $('#slips').innerHTML = leads.length ? leads.map(slip).join('')
     : `<div class="empty" style="grid-column:1/-1"><strong>No leads yet</strong>They appear here the moment a visitor leaves a phone number or email.</div>`;
+  document.querySelectorAll('[data-del]').forEach((b) => {
+    b.onclick = async () => {
+      if (!confirm('Delete this lead permanently?')) return;
+      try {
+        await api(`/api/admin/${tenantId}/leads/${b.dataset.del}`, { method: 'DELETE' });
+        loadLeads(); loadOverview();
+      } catch (e) { toast(e.message); }
+    };
+  });
   document.querySelectorAll('[data-done]').forEach((b) => {
     b.onclick = async () => {
       await api(`/api/admin/${tenantId}/leads/${b.dataset.done}`, { method: 'PATCH', body: JSON.stringify({ status: 'contacted' }) });
@@ -682,6 +714,7 @@ function slip(l) {
       ${l.email && !tel ? `<a href="mailto:${escapeHtml(l.email)}">Email</a>` : ''}
       ${l.status === 'contacted' ? '' : `<button data-done="${l.id}">Mark contacted</button>`}
     </div>
+    <button class="slipX" data-del="${l.id}" aria-label="Delete this lead" title="Delete">&times;</button>
   </article>`;
 }
 
@@ -943,6 +976,15 @@ $('#newAccount').onclick = async () => {
     await api('/api/admin/accounts', { method: 'POST', body: JSON.stringify({ email, password }) });
     toast('Login created. Assign a workspace by creating it while their account is selected.');
     loadAccounts();
+  } catch (e) { toast(e.message); }
+};
+
+$('#clearActivity').onclick = async () => {
+  if (!confirm('Remove all leads and conversations for this workspace? Knowledge and settings are kept.')) return;
+  try {
+    const r = await api(`/api/admin/${tenantId}/activity`, { method: 'DELETE' });
+    toast(`Cleared ${r.removed.leads} leads and ${r.removed.conversations} conversations.`);
+    loadOverview();
   } catch (e) { toast(e.message); }
 };
 
