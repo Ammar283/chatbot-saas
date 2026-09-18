@@ -406,6 +406,11 @@
         </div>
         <div class="field"><label for="sAccent">Accent colour</label><input type="text" id="sAccent" placeholder="#1B3A2F" /></div>
         <div class="field">
+          <label for="sQuick">Opening menu</label>
+          <div class="hint">Tappable options shown with the greeting, one per line. Most visitors do not know what to ask, so lead with the actions worth having &mdash; booking first. Leave empty for a plain text box.</div>
+          <textarea id="sQuick" placeholder="Book an appointment&#10;What services do you offer?&#10;What are your opening hours?" style="min-height:96px"></textarea>
+        </div>
+        <div class="field">
           <label for="sAutoOpen">Open the chat automatically after</label>
           <div class="hint">Seconds. 0 keeps it closed until the visitor clicks. Never opens itself on a phone, where it would cover the page.</div>
           <input type="text" id="sAutoOpen" placeholder="0" />
@@ -747,6 +752,7 @@ function fillSettings(s, publicKey) {
   $('#sBrandName').value = s.brandName || ''; $('#sDashAccent').value = s.dashboardAccent || '';
   $('#sDashLogo').value = s.dashboardLogoUrl || ''; $('#sAutoOpen').value = s.autoOpenSeconds ?? 0;
   $('#sDashHighlight').value = s.dashboardHighlight || '';
+  $('#sQuick').value = (s.quickReplies || []).join('\n');
   paintDashLogo();
   $('#sNotifyEmail').value = s.notifyEmail || ''; $('#sNotifyWa').value = s.notifyWhatsApp || '';
   $('#sNotifyHook').value = s.notifyWebhook || '';
@@ -855,6 +861,7 @@ $('#saveSettings').onclick = async () => {
         brandName: $('#sBrandName').value.trim(), dashboardAccent: $('#sDashAccent').value.trim(),
         dashboardLogoUrl: $('#sDashLogo').value.trim(),
         dashboardHighlight: $('#sDashHighlight').value.trim(),
+        quickReplies: $('#sQuick').value.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 8),
         autoOpenSeconds: Math.max(0, Math.min(120, Number($('#sAutoOpen').value) || 0)),
         leadFields: [...document.querySelectorAll('.leadField:checked')].map((c) => c.value),
         allowedOrigins: $('#sOrigins').value.split('\n').map((x) => x.trim()).filter(Boolean),

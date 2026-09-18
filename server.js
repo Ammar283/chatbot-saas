@@ -120,6 +120,7 @@ app.get('/api/config/:publicKey', (req, res) => {
     botName: s.botName, greeting: s.greeting, accent: s.accent,
     logoUrl: s.logoUrl || '', teaser: s.teaser || '',
     autoOpenSeconds: Number(s.autoOpenSeconds) || 0,
+    quickReplies: Array.isArray(s.quickReplies) ? s.quickReplies.slice(0, 8) : [],
     tenant: tenant.name,
   });
 });

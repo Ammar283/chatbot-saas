@@ -14,7 +14,8 @@
   if (!KEY) return console.warn('[chat widget] Missing data-key attribute.');
 
   const STORE = 'fd_chat_' + KEY;
-  let config = { botName: 'Assistant', greeting: 'Hi. How can I help?', accent: '#1B3A2F', logoUrl: '', teaser: '', autoOpenSeconds: 0 };
+  let config = { botName: 'Assistant', greeting: 'Hi. How can I help?', accent: '#1B3A2F', logoUrl: '', teaser: '', autoOpenSeconds: 0, quickReplies: [] };
+  let menuShown = false;
   // Auto-opening a full-screen panel on a phone hijacks the page before the
   // visitor has read anything, so this is desktop only.
   const isPhone = matchMedia('(max-width: 520px)').matches;
@@ -109,6 +110,21 @@
         .me  { background: ${config.accent}; color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
         .msg a { color: inherit; text-decoration: underline; }
         .bot a { color: ${config.accent}; }
+
+        /* Opening menu. A grid of cards reads as "pick one" where a row of
+           small pills reads as "here are some hints" — and picking one is
+           exactly what we want a visitor who does not know what to ask to do. */
+        .menu { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 2px; }
+        .menu.one { grid-template-columns: 1fr; }
+        .menuItem {
+          background: #fff; border: 1px solid rgba(0,0,0,.09); border-radius: 11px;
+          padding: 13px 11px; font-size: 13px; line-height: 1.35; color: #16181D;
+          cursor: pointer; font-family: inherit; text-align: center; transition: border-color .15s, transform .15s;
+          box-shadow: 0 1px 2px rgba(0,0,0,.04);
+        }
+        .menuItem:hover { border-color: ${config.accent}; transform: translateY(-1px); }
+        .menuItem:focus-visible { outline: 2px solid ${config.accent}; outline-offset: 1px; }
+        .menuItem.wide { grid-column: 1 / -1; background: ${config.accent}; color: #fff; border-color: ${config.accent}; font-weight: 500; }
 
         .chips { display: flex; flex-wrap: wrap; gap: 6px; }
         .chip { background: #fff; border: 1px solid ${config.accent}33; color: ${config.accent};
@@ -211,7 +227,11 @@
     root.querySelector('.teaser')?.remove();
     render();
     if (open) {
-      if (!history.length) { history.push({ role: 'assistant', content: config.greeting }); paint(); }
+      if (!history.length) {
+        history.push({ role: 'assistant', content: config.greeting });
+        menuShown = true;
+        paint();
+      }
       root.querySelector('.bar input').focus();
     }
   }
@@ -222,6 +242,18 @@
     log.innerHTML = history
       .map((m) => `<div class="msg ${m.role === 'user' ? 'me' : 'bot'}">${m.role === 'user' ? esc(m.content) : linkify(m.content)}</div>`)
       .join('');
+    // The menu appears once, under the greeting, before the visitor has typed.
+    if (!busy && menuShown && history.length === 1 && config.quickReplies?.length) {
+      const items = config.quickReplies.slice(0, 8);
+      log.insertAdjacentHTML('beforeend',
+        `<div class="menu ${items.length === 1 ? 'one' : ''}" role="group" aria-label="Choose a topic">${
+          items.map((t, i) => `<button class="menuItem ${i === items.length - 1 && items.length % 2 ? 'wide' : ''}">${esc(t)}</button>`).join('')
+        }</div>`);
+      log.querySelectorAll('.menuItem').forEach((b) => {
+        b.addEventListener('click', () => { menuShown = false; send(b.textContent); });
+      });
+    }
+
     if (busy) log.insertAdjacentHTML('beforeend', '<div class="msg bot dots" aria-label="Typing"><span></span><span></span><span></span></div>');
     if (suggestions.length && !busy) {
       log.insertAdjacentHTML('beforeend',
