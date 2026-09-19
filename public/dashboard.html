@@ -34,7 +34,7 @@
           position: sticky; top: 0; height: 100vh; overflow-y: auto; }
   .brand { font-family: var(--display); font-weight: 700; font-size: 19px; letter-spacing: -.02em; color: #fff; line-height: 1.15; }
   .brand em { display: block; font-style: normal; font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; opacity: .55; margin-top: 5px; }
-  .brand img { max-width: 100%; max-height: 46px; object-fit: contain; object-position: left; display: block; margin-bottom: 35px; }
+  .brand img { max-width: 100%; max-height: 46px; object-fit: contain; object-position: left; display: block; margin-bottom: 9px; }
   .dashLogoPrev { max-width: 200px; max-height: 52px; object-fit: contain; object-position: left;
                   border: 1px solid var(--mist); border-radius: 9px; padding: 8px 10px; margin-top: 8px; background: var(--pine); display: block; }
   .rail label { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; opacity: .55; display: block; margin-bottom: 7px; }
@@ -84,7 +84,7 @@
   .nav button:hover { background: rgba(255,255,255,.08); color: #fff; }
   .nav button[aria-current="true"] { background: var(--brass); color: var(--onBrass); font-weight: 600; }
   .nav .count { font-family: var(--mono); font-size: 11px; opacity: .8; }
-  .main { padding: 30px 34px 60px; max-width: 1334px; }
+  .main { padding: 30px 34px 60px; max-width: 1080px; }
 
   h1 { font-family: var(--display); font-size: 27px; font-weight: 700; letter-spacing: -.025em; }
   .sub { color: var(--muted); margin-top: 3px; margin-bottom: 24px; }
@@ -120,7 +120,7 @@
   .row { display: flex; gap: 9px; align-items: flex-end; flex-wrap: wrap; }
 
   /* ---- signature: leads as telephone message slips ---- */
-  .slips { display: grid; grid-template-columns: repeat(auto-fill, minmax(328px, 1fr)); gap: 15px; }
+  .slips { display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 15px; }
   .slip {
     background: var(--slip); border-radius: 3px; padding: 16px 17px 15px; position: relative;
     box-shadow: 0 1px 0 rgba(0,0,0,.09), 0 8px 18px -12px rgba(0,0,0,.4);
@@ -132,7 +132,7 @@
     background: radial-gradient(circle at 4px 0, transparent 0 4px, var(--slip) 4px) repeat-x 0 0/9px 8px;
     background-color: transparent; top: -4px;
   }
-  .slip .stamp { font-family: var(--mono); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--clay); border-bottom: 1px solid rgba(168,65,47,.32); padding-bottom: 6px; margin-bottom: 11px; display: flex; justify-content: space-between;     margin-top: 15px;}
+  .slip .stamp { font-family: var(--mono); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--clay); border-bottom: 1px solid rgba(168,65,47,.32); padding-bottom: 6px; margin-bottom: 11px; display: flex; justify-content: space-between; }
   .slip dl { display: grid; grid-template-columns: 52px 1fr; gap: 4px 8px; align-items: baseline; }
   .slip dt { font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: #8A6A4A; }
   .slip dd { border-bottom: 1px solid rgba(0,0,0,.13); min-height: 20px; font-size: 13.5px; overflow-wrap: anywhere; }
@@ -233,7 +233,10 @@
     .toast { left: 16px; right: 16px; transform: none; text-align: center; bottom: 16px; }
   }
 
-  @media (max-width: 420px) {
+  /* Common phones are 390–430px wide and fit two stat cards comfortably, which
+     keeps "at a glance" true instead of making the owner scroll for four
+     numbers. Only genuinely narrow screens fall back to one column. */
+  @media (max-width: 359px) {
     .stats { grid-template-columns: 1fr; }
     .main { padding: 18px 12px 60px; }
   }
@@ -546,6 +549,27 @@ async function api(path, opts = {}) {
   return data;
 }
 
+// ---- mobile drawer ----
+// On a phone the sidebar slides in over the page instead of sitting beside it.
+// Scrolling is frozen while it is open, or the page behind it drifts under the
+// drawer and the visitor loses their place.
+const rail = $('#rail');
+const scrim = $('#scrim');
+
+function drawer(open) {
+  rail.classList.toggle('open', open);
+  scrim.classList.toggle('on', open);
+  $('#menuBtn').setAttribute('aria-expanded', String(open));
+  $('#menuBtn').setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+  document.body.style.overflow = open ? 'hidden' : '';
+}
+
+$('#menuBtn').addEventListener('click', () => drawer(!rail.classList.contains('open')));
+scrim.addEventListener('click', () => drawer(false));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') drawer(false); });
+// Returning to desktop width with the drawer open would leave the page frozen.
+matchMedia('(min-width: 861px)').addEventListener('change', (e) => { if (e.matches) drawer(false); });
+
 // ---- navigation ----
 document.querySelectorAll('.nav button').forEach((b) => {
   b.onclick = () => {
@@ -553,6 +577,9 @@ document.querySelectorAll('.nav button').forEach((b) => {
     b.setAttribute('aria-current', 'true');
     document.querySelectorAll('.view').forEach((v) => v.classList.remove('on'));
     $('#v-' + b.dataset.view).classList.add('on');
+    // Label the mobile header with the section, and get the drawer out of the way.
+    $('#menuLabel').textContent = b.textContent.replace(/\d+\s*$/, '').trim();
+    drawer(false);
     if (b.dataset.view === 'leads') loadLeads();
     if (b.dataset.view === 'conversations') loadConvs();
     if (b.dataset.view === 'knowledge') loadKb();

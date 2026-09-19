@@ -115,8 +115,8 @@ function restore(file) {
 }
 
 // --- run ---------------------------------------------------------------
-// Only when invoked directly. server.js imports create(), and without this
-// guard that import would fire a backup on every boot.
+// Only when this file is run directly. server.js imports create(), and without
+// this guard that import fires a backup on every single server boot.
 const invokedDirectly = process.argv[1] && process.argv[1].endsWith('backup.js');
 const args = process.argv.slice(2);
 
