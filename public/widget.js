@@ -140,8 +140,9 @@
         .bar input:focus { outline: 2px solid ${config.accent}66; outline-offset: -1px; border-color: ${config.accent}; }
         .bar button { background: ${config.accent}; color: #fff; border: 0; border-radius: 10px; padding: 0 16px; cursor: pointer; font-size: 14px; font-weight: 500; font-family: inherit; flex: none; }
         .bar button:disabled { opacity: .45; cursor: default; }
-        .foot { text-align: center; font-size: 10.5px; color: #9aa0a6; padding: 0 0 8px; background: #fff; }
-
+       .foot { text-align: center; font-size: 10.5px; color: #9aa0a6; padding: 0 0 8px; background: #fff; }
+       .foot a { color: inherit; text-decoration: none; }
+       .foot a:hover { text-decoration: underline; }
         /* Phones: full screen. A 380px panel on a 360px viewport is unusable,
            and a floating launcher on top of a full-screen panel just covers
            the last message — the header's own close button is enough. */
@@ -181,7 +182,8 @@
             <input type="text" placeholder="Type your message" aria-label="Your message" autocomplete="off" />
             <button type="button" class="send">Send</button>
           </div>
-          <div class="foot">Powered by ${esc(config.botName)}</div>
+        
+             <div class="foot"><a href="https://aifrontbot.net" target="_blank" rel="noopener">Powered by AI FrontBot</a></div>
         </div>
 
         ${!open && config.teaser && !teaserShown ? '' : ''}
