@@ -84,7 +84,7 @@
   .nav button:hover { background: rgba(255,255,255,.08); color: #fff; }
   .nav button[aria-current="true"] { background: var(--brass); color: var(--onBrass); font-weight: 600; }
   .nav .count { font-family: var(--mono); font-size: 11px; opacity: .8; }
-  .main { padding: 30px 34px 60px; max-width: 1080px; }
+  .main { padding: 30px 34px 60px; max-width: 1334px; }
 
   h1 { font-family: var(--display); font-size: 27px; font-weight: 700; letter-spacing: -.025em; }
   .sub { color: var(--muted); margin-top: 3px; margin-bottom: 24px; }
@@ -120,7 +120,7 @@
   .row { display: flex; gap: 9px; align-items: flex-end; flex-wrap: wrap; }
 
   /* ---- signature: leads as telephone message slips ---- */
-  .slips { display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 15px; }
+  .slips { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 15px; }
   .slip {
     background: var(--slip); border-radius: 3px; padding: 16px 17px 15px; position: relative;
     box-shadow: 0 1px 0 rgba(0,0,0,.09), 0 8px 18px -12px rgba(0,0,0,.4);
@@ -132,7 +132,7 @@
     background: radial-gradient(circle at 4px 0, transparent 0 4px, var(--slip) 4px) repeat-x 0 0/9px 8px;
     background-color: transparent; top: -4px;
   }
-  .slip .stamp { font-family: var(--mono); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--clay); border-bottom: 1px solid rgba(168,65,47,.32); padding-bottom: 6px; margin-bottom: 11px; display: flex; justify-content: space-between; }
+  .slip .stamp { margin-top: 15px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--clay); border-bottom: 1px solid rgba(168,65,47,.32); padding-bottom: 6px; margin-bottom: 11px; display: flex; justify-content: space-between; }
   .slip dl { display: grid; grid-template-columns: 52px 1fr; gap: 4px 8px; align-items: baseline; }
   .slip dt { font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: #8A6A4A; }
   .slip dd { border-bottom: 1px solid rgba(0,0,0,.13); min-height: 20px; font-size: 13.5px; overflow-wrap: anywhere; }
