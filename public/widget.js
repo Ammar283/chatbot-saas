@@ -14,7 +14,7 @@
   if (!KEY) return console.warn('[chat widget] Missing data-key attribute.');
 
   const STORE = 'fd_chat_' + KEY;
-  let config = { botName: 'Assistant', greeting: 'Hi. How can I help?', accent: '#1B3A2F', logoUrl: '', teaser: '', autoOpenSeconds: 0, quickReplies: [], footerText: '', footerUrl: '', fontFamily: '', fontUrl: '' };
+  let config = { botName: 'Assistant', greeting: 'Hi. How can I help?', accent: '#1B3A2F', logoUrl: '', teaser: '', autoOpenSeconds: 0, quickReplies: [], footerText: '', footerUrl: '', fontFamily: '', fontUrl: '', statusText: 'Online now' };
   let menuShown = false;
   // Auto-opening a full-screen panel on a phone hijacks the page before the
   // visitor has read anything, so this is desktop only.
@@ -44,6 +44,13 @@
 
   // Webfonts must be loaded by the host document: a @font-face rule inside a
   // shadow root is not applied consistently across browsers.
+  // The visitor's own local time — that is what makes the header read as live
+  // rather than as a fixed label. Locale decides 12- or 24-hour.
+  function clockNow() {
+    try { return new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+    catch { return ''; }
+  }
+
   function loadFont(url) {
     if (!url || document.querySelector(`link[data-fd-font="${url}"]`)) return;
     const l = document.createElement('link');
@@ -192,7 +199,7 @@
             ${config.logoUrl
               ? `<img src="${esc(config.logoUrl)}" alt="" onerror="this.style.display='none'" />`
               : `<div class="mark" aria-hidden="true">${esc((config.botName || 'A').trim()[0].toUpperCase())}</div>`}
-            <div><b>${esc(config.botName)}</b><small>Usually replies instantly</small></div>
+            <div><b>${esc(config.botName)}</b><small>${esc(config.statusText || 'Online now')}<span class="clock"> &middot; ${clockNow()}</span></small></div>
             <button class="close" aria-label="Close chat">&times;</button>
           </div>
           <div class="log" role="log" aria-live="polite" aria-atomic="false"></div>
@@ -230,7 +237,7 @@
   // The closed launcher carries the aiFrontBot mark; the open one shows an X,
   // which reads as "close" far faster than a logo does.
   const LAUNCHER_ICON = script?.dataset.icon
-    || 'https://aifrontbot.net/wp-content/uploads/2026/09/Ai-frontbot-logo-png-1.png';
+    || 'https://aifrontbot.net/wp-content/uploads/2026/09/cropped-Ai-frontbot-logo-png.png';
   const CLOSE_ICON = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
   // If the logo ever fails to load the button must not sit there empty, so it
   // falls back to the generic chat bubble.
@@ -340,6 +347,12 @@
       paint();
     }
   }
+
+  // A header stuck at the opening minute looks broken during a long chat.
+  setInterval(() => {
+    const c = root.querySelector('.clock');
+    if (c) c.innerHTML = ` &middot; ${clockNow()}`;
+  }, 30000);
 
   fetch(`${API}/api/config/${KEY}`)
     .then((r) => r.json())

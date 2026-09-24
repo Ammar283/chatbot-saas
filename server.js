@@ -123,6 +123,7 @@ app.get('/api/config/:publicKey', (req, res) => {
     quickReplies: Array.isArray(s.quickReplies) ? s.quickReplies.slice(0, 8) : [],
     footerText: s.footerText ?? 'Powered by aiFrontBot',
     footerUrl: s.footerUrl ?? 'https://aifrontbot.net',
+    statusText: s.statusText ?? 'Online now',
     fontFamily: s.fontFamily || '',
     fontUrl: s.fontUrl || '',
     tenant: tenant.name,
