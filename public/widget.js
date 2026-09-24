@@ -14,7 +14,7 @@
   if (!KEY) return console.warn('[chat widget] Missing data-key attribute.');
 
   const STORE = 'fd_chat_' + KEY;
-  let config = { botName: 'Assistant', greeting: 'Hi. How can I help?', accent: '#1B3A2F', logoUrl: '', teaser: '', autoOpenSeconds: 0, quickReplies: [] };
+  let config = { botName: 'Assistant', greeting: 'Hi. How can I help?', accent: '#1B3A2F', logoUrl: '', teaser: '', autoOpenSeconds: 0, quickReplies: [], footerText: '', footerUrl: '', fontFamily: '', fontUrl: '' };
   let menuShown = false;
   // Auto-opening a full-screen panel on a phone hijacks the page before the
   // visitor has read anything, so this is desktop only.
@@ -42,6 +42,18 @@
     try { sessionStorage.setItem(STORE, JSON.stringify({ history, conversationId, at: Date.now() })); } catch {}
   }
 
+  // Webfonts must be loaded by the host document: a @font-face rule inside a
+  // shadow root is not applied consistently across browsers.
+  function loadFont(url) {
+    if (!url || document.querySelector(`link[data-fd-font="${url}"]`)) return;
+    const l = document.createElement('link');
+    l.rel = 'stylesheet';
+    l.href = url;
+    l.setAttribute('data-fd-font', url);
+    l.crossOrigin = 'anonymous';
+    document.head.appendChild(l);
+  }
+
   const host = document.createElement('div');
   host.style.cssText = 'position:fixed;z-index:2147483000;bottom:0;right:0;';
   const root = host.attachShadow({ mode: 'open' });
@@ -60,7 +72,9 @@
     root.innerHTML = `
       <style>
         :host, * { box-sizing: border-box; }
-        .wrap { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+        /* The client's own typeface when one is set, falling back to the system
+           stack so a missing or misspelt font never renders as Times. */
+        .wrap { font-family: ${config.fontFamily ? `"${config.fontFamily.replace(/"/g, '')}", ` : ''}ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
 
         .launcher {
           position: fixed; bottom: 20px; right: 20px; width: 58px; height: 58px;
@@ -69,6 +83,8 @@
           box-shadow: 0 6px 24px rgba(0,0,0,.22); transition: transform .18s ease;
         }
         .launcher:hover { transform: scale(1.06); }
+        /* contain, not cover: a logo must never be cropped by the circle. */
+        .launcher img { width: 34px; height: 34px; object-fit: contain; display: block; pointer-events: none; }
         .launcher:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
         .badge {
           position: absolute; top: -2px; right: -2px; min-width: 20px; height: 20px;
@@ -140,9 +156,11 @@
         .bar input:focus { outline: 2px solid ${config.accent}66; outline-offset: -1px; border-color: ${config.accent}; }
         .bar button { background: ${config.accent}; color: #fff; border: 0; border-radius: 10px; padding: 0 16px; cursor: pointer; font-size: 14px; font-weight: 500; font-family: inherit; flex: none; }
         .bar button:disabled { opacity: .45; cursor: default; }
-       .foot { text-align: center; font-size: 10.5px; color: #9aa0a6; padding: 0 0 8px; background: #fff; }
-       .foot a { color: inherit; text-decoration: none; }
-       .foot a:hover { text-decoration: underline; }
+        .foot { text-align: center; font-size: 10.5px; color: #9aa0a6; padding: 0 0 8px; background: #fff; }
+        /* inherit the muted grey rather than turning link-blue */
+        .foot a { color: inherit; text-decoration: none; }
+        .foot a:hover { text-decoration: underline; }
+
         /* Phones: full screen. A 380px panel on a 360px viewport is unusable,
            and a floating launcher on top of a full-screen panel just covers
            the last message — the header's own close button is enough. */
@@ -182,21 +200,21 @@
             <input type="text" placeholder="Type your message" aria-label="Your message" autocomplete="off" />
             <button type="button" class="send">Send</button>
           </div>
-        
-             <div class="foot"><a href="https://aifrontbot.net" target="_blank" rel="noopener">Powered by AI FrontBot</a></div>
+          ${config.footerText ? `<div class="foot">${
+            config.footerUrl
+              ? `<a href="${esc(config.footerUrl)}" target="_blank" rel="noopener">${esc(config.footerText)}</a>`
+              : esc(config.footerText)
+          }</div>` : ''}
         </div>
 
-        ${!open && config.teaser && !teaserShown ? '' : ''}
-
         <button class="launcher" aria-label="${open ? 'Close' : 'Open'} chat" aria-expanded="${open}">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-            ${open
-              ? '<path d="M18 6 6 18M6 6l12 12"/>'
-              : '<path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 21 11.5z"/>'}
-          </svg>
+          ${open ? CLOSE_ICON : `<img class="lIcon" src="${esc(LAUNCHER_ICON)}" alt="" />`}
           ${unread && !open ? `<span class="badge">${unread}</span>` : ''}
         </button>
       </div>`;
+
+    const lIcon = root.querySelector('.lIcon');
+    if (lIcon) lIcon.addEventListener('error', () => { lIcon.outerHTML = CHAT_ICON; });
 
     root.querySelector('.launcher').addEventListener('click', toggle);
     root.querySelector('.close').addEventListener('click', toggle);
@@ -209,24 +227,51 @@
     paint();
   }
 
+  // The closed launcher carries the aiFrontBot mark; the open one shows an X,
+  // which reads as "close" far faster than a logo does.
+  const LAUNCHER_ICON = script?.dataset.icon
+    || 'https://aifrontbot.net/wp-content/uploads/2026/09/cropped-Ai-frontbot-logo-png.png';
+  const CLOSE_ICON = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  // If the logo ever fails to load the button must not sit there empty, so it
+  // falls back to the generic chat bubble.
+  const CHAT_ICON = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 21 11.5z"/></svg>';
+
+  const TEASER_DISMISSED = STORE + '_nudged';
+
+  function teaserDone() {
+    try { return sessionStorage.getItem(TEASER_DISMISSED) === '1'; } catch { return false; }
+  }
+
   function showTeaser() {
-    if (open || teaserShown || !config.teaser || history.length) return;
+    // Once per visit, not once per page. Without the stored flag a visitor who
+    // dismissed it gets nagged again on every page they open, which is exactly
+    // the behaviour that makes people hate these widgets.
+    if (open || teaserShown || teaserDone() || !config.teaser || history.length) return;
     teaserShown = true;
+
     const el = document.createElement('div');
     el.className = 'teaser';
+    el.setAttribute('role', 'status');
     el.innerHTML = `<button class="x" aria-label="Dismiss">&times;</button>${esc(config.teaser)}`;
+
     el.addEventListener('click', (e) => {
       el.remove();
+      // Either way the visitor has answered it — don't ask again this visit.
+      try { sessionStorage.setItem(TEASER_DISMISSED, '1'); } catch {}
       if (!e.target.classList.contains('x')) toggle();
     });
+
     root.querySelector('.wrap').appendChild(el);
-    setTimeout(() => el.remove(), 15000);
+    // No auto-hide: it stays until dismissed or the chat is opened. A bubble
+    // that vanishes after a few seconds is missed by anyone who looked away.
   }
 
   function toggle() {
     open = !open;
     if (open) unread = 0;
     root.querySelector('.teaser')?.remove();
+    // Opening the chat answers the nudge, so it should not reappear later.
+    try { sessionStorage.setItem(TEASER_DISMISSED, '1'); } catch {}
     render();
     if (open) {
       if (!history.length) {
@@ -298,7 +343,7 @@
 
   fetch(`${API}/api/config/${KEY}`)
     .then((r) => r.json())
-    .then((c) => { if (!c.error) config = { ...config, ...c }; })
+    .then((c) => { if (!c.error) { config = { ...config, ...c }; loadFont(config.fontUrl); } })
     .catch(() => {})
     .finally(() => {
       render();

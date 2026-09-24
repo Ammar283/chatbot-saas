@@ -121,6 +121,10 @@ app.get('/api/config/:publicKey', (req, res) => {
     logoUrl: s.logoUrl || '', teaser: s.teaser || '',
     autoOpenSeconds: Number(s.autoOpenSeconds) || 0,
     quickReplies: Array.isArray(s.quickReplies) ? s.quickReplies.slice(0, 8) : [],
+    footerText: s.footerText ?? 'Powered by aiFrontBot',
+    footerUrl: s.footerUrl ?? 'https://aifrontbot.net',
+    fontFamily: s.fontFamily || '',
+    fontUrl: s.fontUrl || '',
     tenant: tenant.name,
   });
 });
@@ -336,6 +340,29 @@ function logTurn(tenant, convId, question, answer, meta = {}) {
 const loginAttempts = new Map();
 setInterval(() => loginAttempts.clear(), 15 * 60 * 1000).unref();
 
+// Unauthenticated by necessity — the sign-in page needs it before anyone has
+// signed in. Returns only a name, a logo and a colour. Unknown workspaces get
+// the defaults rather than a 404, so this cannot be used to discover which
+// workspaces exist.
+app.get('/api/login-brand', (req, res) => {
+  const app_ = store.loadApp();
+  const out = {
+    productName: app_.loginProductName,
+    tagline: app_.loginTagline,
+    logoUrl: app_.loginLogoUrl,
+    accent: app_.loginAccent,
+  };
+
+  const slug = String(req.query.w || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+  if (slug && store.listTenants().some((t) => t.id === slug)) {
+    const s = store.load(slug).settings;
+    if (s.brandName) out.productName = s.brandName;
+    if (s.dashboardLogoUrl) out.logoUrl = s.dashboardLogoUrl;
+    if (s.dashboardAccent || s.accent) out.accent = s.dashboardAccent || s.accent;
+  }
+  res.json(out);
+});
+
 app.post('/api/login', (req, res) => {
   const { email, password } = req.body || {};
   const n = (loginAttempts.get(req.ip) || 0) + 1;
@@ -406,6 +433,15 @@ app.delete('/api/admin/accounts/:id', requireAdmin, requireOwner, (req, res) => 
   if (req.account?.id === req.params.id) return res.status(400).json({ error: 'You cannot remove your own account.' });
   auth.deleteAccount(req.params.id);
   res.json({ ok: true });
+});
+
+app.get('/api/admin/app-settings', requireAdmin, requireOwner, (req, res) => res.json(store.loadApp()));
+
+app.put('/api/admin/app-settings', requireAdmin, requireOwner, (req, res) => {
+  const allowed = ['loginProductName', 'loginTagline', 'loginLogoUrl', 'loginAccent'];
+  const patch = {};
+  for (const k of allowed) if (k in (req.body || {})) patch[k] = String(req.body[k] ?? '').trim();
+  res.json(store.saveApp(patch));
 });
 
 // --- your business at a glance (owner only) ---
@@ -589,9 +625,15 @@ app.get('/api/admin/:tenantId/conversations', requireAdmin, requireTenant, (req,
   res.json(store.load(req.params.tenantId).conversations.slice(0, 100));
 });
 
+// Fields only the account owner may change. Hiding the inputs in the dashboard
+// is cosmetic — anyone can send a PUT — so the branding is enforced here.
+const OWNER_ONLY_SETTINGS = ['footerText', 'footerUrl', 'fontFamily', 'fontUrl'];
+
 app.put('/api/admin/:tenantId/settings', requireAdmin, requireTenant, (req, res) => {
   const t = store.load(req.params.tenantId);
-  Object.assign(t.settings, req.body || {});
+  const incoming = { ...(req.body || {}) };
+  if (!req.isMaster) for (const k of OWNER_ONLY_SETTINGS) delete incoming[k];
+  Object.assign(t.settings, incoming);
   cacheClear(t); // settings changed the bot's behaviour; old answers are stale
   store.save(t.id);
   store.flush();

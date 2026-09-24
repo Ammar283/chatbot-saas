@@ -107,6 +107,11 @@
 
   /* ---- panels ---- */
   .panel { background: var(--card); border: 1px solid var(--mist); border-radius: 11px; padding: 20px; margin-bottom: 18px; }
+  .panel[hidden], .view[hidden] { display: none; }
+  .fontPrev { font-size: 17px; margin-top: 10px; padding: 13px 15px; background: var(--paper);
+              border: 1px solid var(--mist); border-radius: 9px; }
+  .loginPrev { max-width: 190px; max-height: 54px; object-fit: contain; object-position: left;
+               border: 1px solid var(--mist); border-radius: 9px; padding: 8px 10px; margin-top: 8px; display: block; }
   .field { margin-bottom: 14px; }
   .field > label { display: block; font-weight: 500; margin-bottom: 5px; }
   .field .hint { color: var(--muted); font-size: 12.5px; margin-bottom: 6px; }
@@ -380,6 +385,32 @@
         <div id="accountRows"></div>
       </div>
 
+      <div class="panel">
+        <h2>Sign-in page</h2>
+        <p class="sub">What clients see at the sign-in screen. This is the shared default &mdash; add <code>?w=workspace</code> to a client&rsquo;s link and they see their own name, logo and colour instead.</p>
+        <div class="field">
+          <label for="aLoginName">Product name</label>
+          <input type="text" id="aLoginName" placeholder="Front Desk" />
+        </div>
+        <div class="field">
+          <label for="aLoginTag">Small line under it</label>
+          <input type="text" id="aLoginTag" placeholder="chatbot console" />
+        </div>
+        <div class="field">
+          <label for="aLoginLogo">Logo address</label>
+          <input type="text" id="aLoginLogo" placeholder="https://aifrontbot.net/logo.png" />
+          <div id="loginLogoPreview"></div>
+        </div>
+        <div class="field">
+          <label for="aLoginAccent">Background colour</label>
+          <input type="text" id="aLoginAccent" placeholder="#1B3A2F" />
+        </div>
+        <div class="row">
+          <button class="btn" id="saveLoginBrand">Save sign-in page</button>
+          <a class="btn ghost" id="previewLogin" href="/login.html" target="_blank" rel="noopener">Preview</a>
+        </div>
+      </div>
+
       <div class="panel" id="archivePanel" hidden>
         <h2>Archived workspaces</h2>
         <p class="sub">Deleted workspaces are kept here. Restoring brings back leads and knowledge intact.</p>
@@ -502,6 +533,39 @@
           <button class="btn" id="saveNotify">Save notification settings</button>
           <button class="btn ghost" id="testNotify">Send a test</button>
         </div>
+      </div>
+
+      <div class="panel" id="footerPanel" hidden>
+        <h2>Chat footer</h2>
+        <p class="sub">The small line under the message box. Only you can see or change this &mdash; clients cannot remove it themselves.</p>
+        <div class="field">
+          <label for="sFooterText">Footer text</label>
+          <div class="hint">Leave empty to show no footer at all.</div>
+          <input type="text" id="sFooterText" placeholder="Powered by aiFrontBot" />
+        </div>
+        <div class="field">
+          <label for="sFooterUrl">Footer link</label>
+          <div class="hint">Where the text points. Leave empty for plain text with no link.</div>
+          <input type="text" id="sFooterUrl" placeholder="https://aifrontbot.net" />
+        </div>
+        <button class="btn" id="saveFooter">Save footer</button>
+      </div>
+
+      <div class="panel" id="fontPanel" hidden>
+        <h2>Chat typeface</h2>
+        <p class="sub">Owner only. Match the client&rsquo;s brand font, or leave empty for the system font.</p>
+        <div class="field">
+          <label for="sFontFamily">Font name</label>
+          <div class="hint">Exactly as the client&rsquo;s site names it, e.g. Poppins or Montserrat. If their site already loads it, this costs nothing extra.</div>
+          <input type="text" id="sFontFamily" placeholder="Poppins" />
+        </div>
+        <div class="field">
+          <label for="sFontUrl">Font stylesheet address</label>
+          <div class="hint">Only if their site does <em>not</em> already load the font. This adds a third-party request to their page, so leave it empty when you can.</div>
+          <input type="text" id="sFontUrl" placeholder="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" />
+        </div>
+        <div id="fontPreview"></div>
+        <button class="btn" id="saveFont">Save typeface</button>
       </div>
 
       <div class="panel">
@@ -696,6 +760,8 @@ async function loadOverview() {
         } catch (e) { toast(e.message); }
       };
     });
+    const pv = $('#previewLogin');
+    if (pv) pv.href = '/login.html?w=' + encodeURIComponent(tenantId);
     $('#accessPanel').hidden = !o.clientKey;
     if (o.clientKey) $('#clientKey').textContent = o.clientKey;
     fillSettings(o.settings, o.publicKey);
@@ -833,6 +899,13 @@ function fillSettings(s, publicKey) {
   $('#sDashLogo').value = s.dashboardLogoUrl || ''; $('#sAutoOpen').value = s.autoOpenSeconds ?? 0;
   $('#sDashHighlight').value = s.dashboardHighlight || '';
   $('#sQuick').value = (s.quickReplies || []).join('\n');
+  $('#sFooterText').value = s.footerText ?? '';
+  $('#sFooterUrl').value = s.footerUrl ?? '';
+  $('#footerPanel').hidden = !me || me.role !== 'owner';
+  $('#fontPanel').hidden = !me || me.role !== 'owner';
+  $('#sFontFamily').value = s.fontFamily || '';
+  $('#sFontUrl').value = s.fontUrl || '';
+  paintFont();
   paintDashLogo();
   $('#sNotifyEmail').value = s.notifyEmail || ''; $('#sNotifyWa').value = s.notifyWhatsApp || '';
   $('#sNotifyHook').value = s.notifyWebhook || '';
@@ -992,8 +1065,43 @@ async function loadClients() {
     });
 
     loadAccounts();
+    loadLoginBrand();
   } catch (e) { toast(e.message); }
 }
+
+async function loadLoginBrand() {
+  try {
+    const a = await api('/api/admin/app-settings');
+    $('#aLoginName').value = a.loginProductName || '';
+    $('#aLoginTag').value = a.loginTagline || '';
+    $('#aLoginLogo').value = a.loginLogoUrl || '';
+    $('#aLoginAccent').value = a.loginAccent || '';
+    paintLoginLogo();
+  } catch { /* owner-only; never block the page */ }
+}
+
+function paintLoginLogo() {
+  const u = $('#aLoginLogo').value.trim();
+  $('#loginLogoPreview').innerHTML = u
+    ? `<img src="${escapeHtml(u)}" alt="Logo preview" class="loginPrev" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'flag',textContent:'that address did not load'}))" />`
+    : '';
+}
+$('#aLoginLogo').addEventListener('input', paintLoginLogo);
+
+$('#saveLoginBrand').onclick = async () => {
+  try {
+    await api('/api/admin/app-settings', {
+      method: 'PUT',
+      body: JSON.stringify({
+        loginProductName: $('#aLoginName').value.trim(),
+        loginTagline: $('#aLoginTag').value.trim(),
+        loginLogoUrl: $('#aLoginLogo').value.trim(),
+        loginAccent: $('#aLoginAccent').value.trim(),
+      }),
+    });
+    toast('Sign-in page saved.');
+  } catch (e) { toast(e.message); }
+};
 
 async function loadAccounts() {
   const list = await api('/api/admin/accounts');
@@ -1037,6 +1145,83 @@ $('#newAccount').onclick = async () => {
     await api('/api/admin/accounts', { method: 'POST', body: JSON.stringify({ email, password }) });
     toast('Login created. Assign a workspace by creating it while their account is selected.');
     loadAccounts();
+    loadLoginBrand();
+  } catch (e) { toast(e.message); }
+}
+
+async function loadLoginBrand() {
+  try {
+    const a = await api('/api/admin/app-settings');
+    $('#aLoginName').value = a.loginProductName || '';
+    $('#aLoginTag').value = a.loginTagline || '';
+    $('#aLoginLogo').value = a.loginLogoUrl || '';
+    $('#aLoginAccent').value = a.loginAccent || '';
+    paintLoginLogo();
+  } catch { /* owner-only; never block the page */ }
+}
+
+function paintLoginLogo() {
+  const u = $('#aLoginLogo').value.trim();
+  $('#loginLogoPreview').innerHTML = u
+    ? `<img src="${escapeHtml(u)}" alt="Logo preview" class="loginPrev" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'flag',textContent:'that address did not load'}))" />`
+    : '';
+}
+$('#aLoginLogo').addEventListener('input', paintLoginLogo);
+
+$('#saveLoginBrand').onclick = async () => {
+  try {
+    await api('/api/admin/app-settings', {
+      method: 'PUT',
+      body: JSON.stringify({
+        loginProductName: $('#aLoginName').value.trim(),
+        loginTagline: $('#aLoginTag').value.trim(),
+        loginLogoUrl: $('#aLoginLogo').value.trim(),
+        loginAccent: $('#aLoginAccent').value.trim(),
+      }),
+    });
+    toast('Sign-in page saved.');
+  } catch (e) { toast(e.message); }
+};;
+
+function paintFont() {
+  const fam = $('#sFontFamily').value.trim();
+  const url = $('#sFontUrl').value.trim();
+  if (url && !document.querySelector(`link[data-preview-font="${url}"]`)) {
+    const l = document.createElement('link');
+    l.rel = 'stylesheet'; l.href = url; l.setAttribute('data-preview-font', url);
+    document.head.appendChild(l);
+  }
+  $('#fontPreview').innerHTML = fam
+    ? `<p class="fontPrev" style="font-family:'${escapeHtml(fam)}', ui-sans-serif, system-ui, sans-serif">
+         Hi. Ask me anything about what we do.</p>`
+    : '';
+}
+$('#sFontFamily').addEventListener('input', paintFont);
+$('#sFontUrl').addEventListener('change', paintFont);
+
+$('#saveFont').onclick = async () => {
+  try {
+    await api(`/api/admin/${tenantId}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        fontFamily: $('#sFontFamily').value.trim(),
+        fontUrl: $('#sFontUrl').value.trim(),
+      }),
+    });
+    toast('Typeface saved. Hard-refresh the client site to see it.');
+  } catch (e) { toast(e.message); }
+};
+
+$('#saveFooter').onclick = async () => {
+  try {
+    await api(`/api/admin/${tenantId}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        footerText: $('#sFooterText').value.trim(),
+        footerUrl: $('#sFooterUrl').value.trim(),
+      }),
+    });
+    toast('Chat footer saved. Hard-refresh the client site to see it.');
   } catch (e) { toast(e.message); }
 };
 
