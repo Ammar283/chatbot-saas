@@ -237,8 +237,8 @@
   // The closed launcher carries the aiFrontBot mark; the open one shows an X,
   // which reads as "close" far faster than a logo does.
   const LAUNCHER_ICON = script?.dataset.icon
-    || 'https://aifrontbot.net/wp-content/uploads/2026/09/cropped-Ai-frontbot-logo-png.png';
-  const CLOSE_ICON = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+    || 'https://aifrontbot.net/wp-content/uploads/2026/09/Ai-frontbot-logo-png-1.png';
+  const CLOSE_ICON = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
   // If the logo ever fails to load the button must not sit there empty, so it
   // falls back to the generic chat bubble.
   const CHAT_ICON = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 21 11.5z"/></svg>';
