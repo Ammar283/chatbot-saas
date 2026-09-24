@@ -29,12 +29,21 @@
   a { color: var(--pine); }
 
   /* ---- shell ---- */
-.span-new{
+
+.span-new {
     background: #1B3A2F;
-    padding: 4px 7px;
+    padding: 5px 15px;
     color: white;
     border-radius: 5px;
+    font-weight: 500;
+    font-size: 11px;
+    margin-top: -12px;
+    font-family: 'Bricolage Grotesque';
+    letter-spacing: 1px;
+    box-shadow: -4px 5px #e8d3b9;
+    margin-bottom: 8px;
 }
+
   .shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
   .rail { background: var(--pine); color: #E8EDE6; padding: 22px 16px 34px; display: flex; flex-direction: column; gap: 22px;
           position: sticky; top: 0; height: 100vh; overflow-y: auto; }
@@ -92,7 +101,8 @@
   .nav button[hidden] { display: none; }
   .nav button:hover { background: rgba(255,255,255,.08); color: #fff; }
   .nav button[aria-current="true"] { background: var(--brass); color: var(--onBrass); font-weight: 600; }
-  .nav .count {     background: #265242; font-family: var(--mono); font-size: 11px; opacity: .8; }
+  .nav .count {     background: #265242; font-family: var(--mono); font-size: 11px; opacity: .9;    padding: 3px 8px;
+    border-radius: 3px; }
   .main { padding: 30px 34px 60px; max-width: 1334px; }
 
   h1 { font-family: var(--display); font-size: 27px; font-weight: 700; letter-spacing: -.025em; }
@@ -807,7 +817,7 @@ function slip(l) {
   // A blank line reads as a bug. Say plainly that the visitor didn't give it.
   const val = (v) => v ? escapeHtml(v) : '<span class="none">not given</span>';
   return `<article class="slip ${l.status === 'contacted' ? 'Done' : ''}">
-    <div class="stamp"><span class="span-new">${l.status === 'contacted' ? 'Contacted' : 'New'}</span><span>${when}</span></div>
+    <div class="stamp"><span class="span-new">${l.status === 'contacted' ? 'Contacted' : 'New Appointment Request'}</span><span>${when}</span></div>
     <dl>
       <dt>Name</dt><dd>${val(l.name)}</dd>
       <dt>Phone</dt><dd class="tel">${val(l.phone)}</dd>
