@@ -390,6 +390,13 @@ app.post('/api/admin/accounts', requireAdmin, requireOwner, (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+app.post('/api/admin/accounts/:id/email', requireAdmin, requireOwner, (req, res) => {
+  try {
+    const a = auth.setEmail(req.params.id, req.body.email);
+    res.json({ ok: true, email: a.email });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 app.post('/api/admin/accounts/:id/password', requireAdmin, requireOwner, (req, res) => {
   try { auth.setPassword(req.params.id, req.body.password); res.json({ ok: true }); }
   catch (e) { res.status(400).json({ error: e.message }); }
@@ -564,6 +571,18 @@ app.get('/api/admin/:tenantId/leads.csv', requireAdmin, requireTenant, (req, res
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${t.id}-leads.csv"`);
   res.send('\uFEFF' + rows.join('\n'));
+});
+
+// Conversations are the client's own records, so they can clear them. Deleting
+// one leaves any lead it produced untouched — those are separate rows, and
+// losing a phone number because someone tidied a chat log would be a bad day.
+app.delete('/api/admin/:tenantId/conversations/:convId', requireAdmin, requireTenant, (req, res) => {
+  const t = store.load(req.params.tenantId);
+  const before = t.conversations.length;
+  t.conversations = t.conversations.filter((c) => c.id !== req.params.convId);
+  store.save(t.id);
+  store.flush();
+  res.json({ ok: true, removed: before - t.conversations.length });
 });
 
 app.get('/api/admin/:tenantId/conversations', requireAdmin, requireTenant, (req, res) => {

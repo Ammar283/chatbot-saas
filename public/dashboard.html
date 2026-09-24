@@ -81,10 +81,13 @@
             border-radius: 7px; padding: 9px 11px; overflow-wrap: anywhere; margin: 6px 0 10px; }
   .rail .spacer { margin-top: auto; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; opacity: .4; }
   .nav button { background: none; border: 0; text-align: left; padding: 9px 11px; border-radius: 7px; color: #C9D3C6; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+  /* display:flex above beats the browser's own [hidden] { display: none }, so
+     owner-only tabs stayed visible to clients. This puts it back. */
+  .nav button[hidden] { display: none; }
   .nav button:hover { background: rgba(255,255,255,.08); color: #fff; }
   .nav button[aria-current="true"] { background: var(--brass); color: var(--onBrass); font-weight: 600; }
   .nav .count { font-family: var(--mono); font-size: 11px; opacity: .8; }
-  .main { padding: 30px 34px 60px; max-width: 1334px; }
+  .main { padding: 30px 34px 60px; max-width: 1080px; }
 
   h1 { font-family: var(--display); font-size: 27px; font-weight: 700; letter-spacing: -.025em; }
   .sub { color: var(--muted); margin-top: 3px; margin-bottom: 24px; }
@@ -120,7 +123,7 @@
   .row { display: flex; gap: 9px; align-items: flex-end; flex-wrap: wrap; }
 
   /* ---- signature: leads as telephone message slips ---- */
-  .slips { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 15px; }
+  .slips { display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 15px; }
   .slip {
     background: var(--slip); border-radius: 3px; padding: 16px 17px 15px; position: relative;
     box-shadow: 0 1px 0 rgba(0,0,0,.09), 0 8px 18px -12px rgba(0,0,0,.4);
@@ -132,7 +135,7 @@
     background: radial-gradient(circle at 4px 0, transparent 0 4px, var(--slip) 4px) repeat-x 0 0/9px 8px;
     background-color: transparent; top: -4px;
   }
-  .slip .stamp { margin-top: 15px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--clay); border-bottom: 1px solid rgba(168,65,47,.32); padding-bottom: 6px; margin-bottom: 11px; display: flex; justify-content: space-between; }
+  .slip .stamp { font-family: var(--mono); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--clay); border-bottom: 1px solid rgba(168,65,47,.32); padding-bottom: 6px; margin-bottom: 11px; display: flex; justify-content: space-between; }
   .slip dl { display: grid; grid-template-columns: 52px 1fr; gap: 4px 8px; align-items: baseline; }
   .slip dt { font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: #8A6A4A; }
   .slip dd { border-bottom: 1px solid rgba(0,0,0,.13); min-height: 20px; font-size: 13.5px; overflow-wrap: anywhere; }
@@ -154,7 +157,11 @@
   .slipX { position: absolute; top: 6px; right: 7px; }
   .slip:hover .slipX { opacity: .7; }
   .conv { border: 1px solid var(--mist); border-radius: 9px; background: #fff; margin-bottom: 9px; overflow: hidden; }
-  .conv summary { padding: 11px 14px; cursor: pointer; display: flex; justify-content: space-between; gap: 10px; }
+  .conv summary { padding: 11px 14px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .convX { background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 18px; line-height: 1;
+           padding: 2px 6px; border-radius: 6px; opacity: 0; transition: opacity .15s, color .15s; flex: none; }
+  .conv:hover .convX { opacity: .55; }
+  .convX:hover, .convX:focus-visible { opacity: 1; color: var(--clay); background: rgba(168,65,47,.08); }
   .conv .turns { padding: 4px 14px 14px; border-top: 1px solid var(--mist); }
   .turn { margin-top: 11px; }
   .turn .q { font-weight: 500; }
@@ -752,12 +759,25 @@ async function loadConvs() {
   $('#convs').innerHTML = convs.length ? convs.map((c) => `
     <details class="conv">
       <summary><span>${c.turns.length} message${c.turns.length === 1 ? '' : 's'} — ${escapeHtml(c.turns[0]?.q || '')}</span>
-      <span class="flag">${new Date(c.startedAt).toLocaleDateString()}</span></summary>
+      <span class="flag">${new Date(c.startedAt).toLocaleDateString()}</span>
+      <button class="convX" data-delconv="${escapeHtml(c.id)}" aria-label="Delete this conversation" title="Delete">&times;</button></summary>
       <div class="turns">${c.turns.map((t) => `
         <div class="turn"><div class="q">${escapeHtml(t.q)}</div><div class="a">${escapeHtml(t.a)}</div>
         ${t.grounded === false ? '<div class="flag">no answer found</div>' : ''}</div>`).join('')}</div>
     </details>`).join('')
     : `<div class="empty"><strong>No conversations yet</strong>Install the widget and the first chats will show up here.</div>`;
+
+  document.querySelectorAll('[data-delconv]').forEach((b) => {
+    b.onclick = async (e) => {
+      // Inside a <summary>, so stop the click from toggling the panel open.
+      e.preventDefault(); e.stopPropagation();
+      if (!confirm('Delete this conversation? Any lead it captured is kept.')) return;
+      try {
+        await api(`/api/admin/${tenantId}/conversations/${b.dataset.delconv}`, { method: 'DELETE' });
+        loadConvs(); loadOverview();
+      } catch (err) { toast(err.message); }
+    };
+  });
 }
 
 // ---- knowledge ----
@@ -981,8 +1001,22 @@ async function loadAccounts() {
     <div class="crow">
       <div><strong>${escapeHtml(a.email)}</strong><small>${a.role === 'owner' ? 'you' : (a.workspaces.join(', ') || 'no workspaces yet')}</small></div>
       <small>${a.lastLoginAt ? 'last in ' + new Date(a.lastLoginAt).toLocaleDateString() : 'never signed in'}</small>
+      ${a.role === 'owner' ? '' : `<button class="btn ghost" data-email="${a.id}" data-current="${escapeHtml(a.email)}">Change email</button>`}
       ${a.role === 'owner' ? '' : `<button class="btn ghost" data-reset="${a.id}">Reset password</button>`}
     </div>`).join('');
+
+  document.querySelectorAll('[data-email]').forEach((b) => {
+    b.onclick = async () => {
+      const email = prompt('New email for this client. They sign in with it from now on:', b.dataset.current);
+      if (!email || email === b.dataset.current) return;
+      try {
+        const r = await api(`/api/admin/accounts/${b.dataset.email}/email`, { method: 'POST', body: JSON.stringify({ email }) });
+        toast(`Sign-in email is now ${r.email}.`);
+        loadAccounts();
+      } catch (e) { toast(e.message); }
+    };
+  });
+
   document.querySelectorAll('[data-reset]').forEach((b) => {
     b.onclick = async () => {
       const password = prompt('New password for this client (at least 8 characters):');
