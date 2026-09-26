@@ -832,7 +832,7 @@ function slip(l) {
   // A blank line reads as a bug. Say plainly that the visitor didn't give it.
   const val = (v) => v ? escapeHtml(v) : '<span class="none">not given</span>';
   return `<article class="slip ${l.status === 'contacted' ? 'done' : ''}">
-    <div class="stamp"><span class="span-new">${l.status === 'contacted' ? 'Contacted' : 'New Appointment Request'}</span><span>${when}</span></div>
+    <div class="stamp"><span class="span-new">${l.status === 'contacted' ? 'Contacted' : 'New Lead'}</span><span>${when}</span></div>
     <dl>
       <dt>Name</dt><dd>${val(l.name)}</dd>
       <dt>Phone</dt><dd class="tel">${val(l.phone)}</dd>
