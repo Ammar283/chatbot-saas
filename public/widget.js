@@ -119,7 +119,7 @@
         .panel.open { opacity: 1; transform: none; pointer-events: auto; }
 
         .head { background: ${config.accent}; color: #fff; padding: 13px 15px; display: flex; align-items: center; gap: 11px; }
-        .head img { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; background: rgba(255,255,255,.15); flex: none; }
+        .head img { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; background: rgba(255,255,255,.15); flex: none; padding:5px }
         .head .mark { width: 34px; height: 34px; border-radius: 8px; background: rgba(255,255,255,.16); display: grid; place-items: center; font-weight: 700; font-size: 15px; flex: none; }
         .head b { font-size: 15px; font-weight: 600; display: block; }
         .head small { display: block; font-size: 11.5px; opacity: .78; font-weight: 400; }
