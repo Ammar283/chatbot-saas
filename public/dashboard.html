@@ -78,6 +78,16 @@
   .banner { border-radius: 10px; padding: 13px 16px; margin-bottom: 18px; font-size: 13.5px; line-height: 1.5; }
   .banner.bad { background: #FBEFED; border-left: 4px solid var(--clay); color: #7A2C20; }
   .banner.warn { background: #FBF4E4; border-left: 4px solid var(--brass); color: #6E5316; }
+  /* Sits above everything, because a paused account is the only thing that
+     matters until it is resolved. */
+  .suspendBar { position: sticky; top: 0; z-index: 70; background: #7A2C20; color: #FFF3F1;
+                padding: 12px 20px; font-size: 13.5px; line-height: 1.5; display: flex; gap: 10px;
+                align-items: baseline; flex-wrap: wrap; }
+  .suspendBar strong { font-family: var(--display); font-size: 14px; }
+  .suspendBar[hidden] { display: none; }
+  .pill.paused { background: #F6DEDA; color: #7A2C20; }
+  .crow .acts { display: flex; gap: 7px; }
+  .crow .acts .btn { padding: 6px 12px; font-size: 12.5px; }
   .banner strong { display: block; margin-bottom: 3px; }
   .chan { font-size: 12.5px; color: var(--muted); margin-bottom: 12px; }
   .chan b { color: var(--pine); }
@@ -111,7 +121,7 @@
   .nav button:hover { background: rgba(255,255,255,.08); color: #fff; }
   .nav button[aria-current="true"] { background: var(--brass); color: var(--onBrass); font-weight: 600; }
   /* A translucent white stays readable whatever the rail colour is set to. */
-  .nav .count { background: rgba(255,255,255,.16); font-family: var(--mono); font-size: 11px;
+  .nav .count { color: #fff; background: rgba(255,255,255,.16); font-family: var(--mono); font-size: 11px;
                 opacity: .95; padding: 3px 8px; border-radius: 3px; }
   .main { padding: 30px 34px 60px; max-width: 1334px; }
 
@@ -284,6 +294,10 @@
 </head>
 <body>
 <div class="scrim" id="scrim"></div>
+<div class="suspendBar" id="suspendBar" hidden>
+  <strong>Chatbot paused</strong>
+  <span id="suspendMsg"></span>
+</div>
 <div class="shell">
   <aside class="rail" id="rail">
     <div class="brand" id="brand">
@@ -781,6 +795,8 @@ async function loadOverview() {
       ? o.unanswered.map((q) => `<div class="gap"><span>${escapeHtml(q)}</span>
           <button class="gapX" data-gap="${escapeHtml(q)}" aria-label="Dismiss this question" title="Dismiss">&times;</button></div>`).join('')
       : `<div class="empty"><strong>Nothing missed yet</strong>The bot found an answer for every question it received.</div>`;
+    $('#suspendBar').hidden = !o.suspended;
+    $('#suspendMsg').textContent = o.suspendedMessage || '';
     applyBranding(o.settings);
     document.querySelectorAll('[data-gap]').forEach((b) => {
       b.onclick = async () => {
@@ -832,7 +848,7 @@ function slip(l) {
   // A blank line reads as a bug. Say plainly that the visitor didn't give it.
   const val = (v) => v ? escapeHtml(v) : '<span class="none">not given</span>';
   return `<article class="slip ${l.status === 'contacted' ? 'done' : ''}">
-    <div class="stamp"><span class="span-new">${l.status === 'contacted' ? 'Contacted' : 'New Lead'}</span><span>${when}</span></div>
+    <div class="stamp"><span class="span-new">${l.status === 'contacted' ? 'Contacted' : 'New Appointment Request'}</span><span>${when}</span></div>
     <dl>
       <dt>Name</dt><dd>${val(l.name)}</dd>
       <dt>Phone</dt><dd class="tel">${val(l.phone)}</dd>
@@ -1076,7 +1092,8 @@ async function loadClients() {
       ${stat('Clients', d.clients, `${d.workspaces} workspace${d.workspaces === 1 ? '' : 's'}`, true)}
       ${stat('Leads delivered', d.totalLeads, `${d.newLeads} awaiting contact`)}
       ${stat('Messages', d.messagesThisMonth, 'this month, all clients')}
-      ${stat('Going quiet', d.atRisk, 'no traffic in 14 days')}`;
+      ${stat('Going quiet', d.atRisk, 'no traffic in 14 days')}
+      ${d.paused ? stat('Paused', d.paused, 'awaiting payment') : ''}`;
 
     $('#clientRows').innerHTML = d.rows.length ? d.rows.map((r) => `
       <div class="crow">
@@ -1084,9 +1101,47 @@ async function loadClients() {
         <div class="num" data-label="leads">${r.leads}<small>leads</small></div>
         <div class="num" data-label="messages">${r.messages}<small>msgs</small></div>
         <div class="num" data-label="of cap">${r.capUsedPct}%<small>of cap</small></div>
-        <span class="pill ${r.health === 'active' ? 'active' : r.health === 'quiet' ? 'quiet' : r.health === 'at risk' ? 'risk' : 'cold'}">${r.health}</span>
+        <span class="pill ${r.health === 'paused' ? 'paused' : r.health === 'active' ? 'active' : r.health === 'quiet' ? 'quiet' : r.health === 'at risk' ? 'risk' : 'cold'}">${r.health}</span>
+        <div class="acts">
+          <button class="btn ghost" data-pause="${escapeHtml(r.id)}" data-on="${r.suspended ? '1' : '0'}" data-name="${escapeHtml(r.name)}">${r.suspended ? 'Resume' : 'Pause'}</button>
+          <button class="btn warn" data-removews="${escapeHtml(r.id)}" data-wsname="${escapeHtml(r.name)}">Remove</button>
+        </div>
       </div>`).join('')
       : `<div class="empty"><strong>No workspaces yet</strong>Create one from the sidebar.</div>`;
+
+    document.querySelectorAll('[data-pause]').forEach((b) => {
+      b.onclick = async () => {
+        const on = b.dataset.on === '1';
+        let message;
+        if (!on) {
+          message = prompt(
+            `Pause ${b.dataset.name}?\n\nThe bot stops on their website. Nothing is deleted.\nThis note shows in their dashboard — not to their visitors:`,
+            'Your subscription is overdue. The chatbot is paused on your website until payment is received. Your leads and knowledge base are safe.');
+          if (message === null) return;
+        } else if (!confirm(`Resume ${b.dataset.name}? The bot starts answering again straight away.`)) return;
+
+        try {
+          await api(`/api/admin/tenants/${b.dataset.pause}/suspend`, {
+            method: 'POST',
+            body: JSON.stringify({ suspended: !on, message }),
+          });
+          toast(on ? `${b.dataset.name} resumed.` : `${b.dataset.name} paused.`);
+          loadClients(); loadOverview();
+        } catch (e) { toast(e.message); }
+      };
+    });
+
+    document.querySelectorAll('[data-removews]').forEach((b) => {
+      b.onclick = async () => {
+        const typed = prompt(`Remove ${b.dataset.wsname} for good?\n\nIt is archived, so you can restore it later.\nType the workspace name to confirm:`);
+        if (!typed) return;
+        try {
+          await api(`/api/admin/tenants/${b.dataset.removews}`, { method: 'DELETE', body: JSON.stringify({ confirm: typed }) });
+          toast(`${b.dataset.wsname} removed and archived.`);
+          loadClients(); loadTenants();
+        } catch (e) { toast(e.message); }
+      };
+    });
 
     $('#archivePanel').hidden = !d.archived.length;
     $('#archiveRows').innerHTML = d.archived.map((a) => `
@@ -1301,7 +1356,8 @@ async function loadChannels() {
       ? `<p class="chan">Currently sending by <b>${st.live.join('</b>, <b>')}</b>.</p>`
       : `<p class="chan">Nothing is being sent yet.</p>`;
     const probs = (st.problems || []).map((p) => `<p class="chanWarn">${escapeHtml(p)}</p>`).join('');
-    $('#channelState').innerHTML = live + probs;
+    const notes = (st.notes || []).map((n) => `<p class="chan">${escapeHtml(n)}</p>`).join('');
+    $('#channelState').innerHTML = live + notes + probs;
   } catch { /* channel state is a nicety, never block the page for it */ }
 }
 
