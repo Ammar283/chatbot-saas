@@ -116,6 +116,9 @@ app.get('/api/config/:publicKey', (req, res) => {
   const tenant = store.findByPublicKey(req.params.publicKey);
   if (!tenant) return res.status(404).json({ error: 'Unknown workspace key.' });
   const s = tenant.settings;
+  // Paused: the widget removes itself silently. The visitor sees an ordinary
+  // page, not a notice about someone else's unpaid invoice.
+  if (s.suspended) return res.json({ suspended: true });
   res.json({
     botName: s.botName, greeting: s.greeting, accent: s.accent,
     logoUrl: s.logoUrl || '', teaser: s.teaser || '',
@@ -147,6 +150,11 @@ app.post('/api/chat', async (req, res) => {
   const visitor = `${tenant.id}:${req.ip}`;
   if (rateLimited(visitor)) {
     return res.json({ answer: 'You have hit the message limit for this hour. Please try again later.', suggestions: [] });
+  }
+  // Belt and braces: the widget will not have loaded, but a stale page or a
+  // copied key must not keep running up your API bill.
+  if (tenant.settings.suspended) {
+    return res.status(403).json({ error: 'This assistant is currently unavailable.' });
   }
   if (store.overCap(tenant)) {
     return res.json({ answer: tenant.settings.handoffMessage, handoff: true, suggestions: [] });
@@ -268,9 +276,25 @@ function notifyOnce(tenant, lead) {
   if (!stage || lead.notifiedStage === stage || lead.notifiedStage === 'complete') return;
   lead.notifiedStage = stage;
   // Deliberately not awaited: the visitor should never wait on an email.
+  //
+  // If every channel fails, put the marker back. Otherwise one bad afternoon at
+  // the email provider means that lead is flagged as notified forever and the
+  // client never hears about it — the exact failure this feature exists to stop.
   notifyLead(tenant, lead)
-    .then((r) => { const bad = r.filter((x) => x.failed); if (bad.length) console.warn('[notify]', bad); })
-    .catch((e) => console.warn('[notify]', e.message));
+    .then((r) => {
+      const bad = r.filter((x) => x.failed);
+      if (!bad.length) return;
+      console.warn('[notify]', bad);
+      if (!r.some((x) => x.sent)) {
+        lead.notifiedStage = null;
+        store.save(tenant.id);
+      }
+    })
+    .catch((e) => {
+      console.warn('[notify]', e.message);
+      lead.notifiedStage = null;
+      store.save(tenant.id);
+    });
 }
 
 // The gaps list is only useful if every line is a real question the knowledge
@@ -458,6 +482,7 @@ app.get('/api/admin/summary', requireAdmin, requireOwner, (req, res) => {
       id: t.id,
       name: t.name,
       account: account?.email || null,
+      accountId: t.accountId || '',
       chunks: t.chunks.length,
       leads: t.leads.length,
       newLeads: t.leads.filter((l) => l.status === 'new').length,
@@ -466,7 +491,9 @@ app.get('/api/admin/summary', requireAdmin, requireOwner, (req, res) => {
       lastActivity: last,
       daysQuiet,
       // No traffic for a fortnight is the earliest churn signal you get.
-      health: !last ? 'not live' : daysQuiet > 14 ? 'at risk' : daysQuiet > 5 ? 'quiet' : 'active',
+      suspended: Boolean(t.settings.suspended),
+      health: t.settings.suspended ? 'paused'
+        : !last ? 'not live' : daysQuiet > 14 ? 'at risk' : daysQuiet > 5 ? 'quiet' : 'active',
     };
   });
 
@@ -477,6 +504,7 @@ app.get('/api/admin/summary', requireAdmin, requireOwner, (req, res) => {
     newLeads: rows.reduce((n, r) => n + r.newLeads, 0),
     messagesThisMonth: rows.reduce((n, r) => n + r.messages, 0),
     atRisk: rows.filter((r) => r.health === 'at risk').length,
+    paused: rows.filter((r) => r.suspended).length,
     rows: rows.sort((a, b) => (b.leads - a.leads)),
     archived: store.listArchived(),
   });
@@ -510,6 +538,41 @@ app.post('/api/admin/tenants', requireAdmin, (req, res) => {
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
+});
+
+// Hand a workspace to a client login after the fact. Before this, the only
+// chance to connect the two was the moment the workspace was created — so a site
+// built before the client had an account stayed stranded with no way in.
+app.post('/api/admin/tenants/:tenantId/assign', requireAdmin, requireOwner, (req, res) => {
+  try {
+    const accountId = String(req.body?.accountId || '').trim();
+    if (accountId) {
+      const a = auth.findById(accountId);
+      if (!a) return res.status(400).json({ error: 'That client login no longer exists.' });
+      if (a.role === 'owner') {
+        return res.status(400).json({ error: 'You already see every workspace. Pick a client login instead.' });
+      }
+    }
+    const t = store.assignTenant(req.params.tenantId, accountId || null);
+    res.json({ ok: true, accountId: t.accountId });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// Pausing keeps everything — leads, knowledge, settings — and only stops the
+// bot answering. That is the leverage: their website loses its receptionist,
+// while nothing they have built is lost.
+app.post('/api/admin/tenants/:tenantId/suspend', requireAdmin, requireOwner, (req, res) => {
+  const t = store.load(req.params.tenantId);
+  t.settings.suspended = Boolean(req.body?.suspended);
+  if (typeof req.body?.message === 'string' && req.body.message.trim()) {
+    t.settings.suspendedMessage = req.body.message.trim();
+  }
+  cacheClear(t);
+  store.save(t.id);
+  store.flush();
+  res.json({ ok: true, suspended: t.settings.suspended, message: t.settings.suspendedMessage });
 });
 
 // Clients can remove their own workspaces. Typing the name is required, and
@@ -549,6 +612,8 @@ app.get('/api/admin/:tenantId/overview', requireAdmin, requireTenant, (req, res)
     publicKey: t.publicKey,
     clientKey: req.isMaster ? t.clientKey : undefined,
     isMaster: Boolean(req.isMaster),
+    suspended: Boolean(t.settings.suspended),
+    suspendedMessage: t.settings.suspendedMessage || '',
     settings: t.settings,
     chunks: t.chunks.length,
     usage,
@@ -628,7 +693,7 @@ app.get('/api/admin/:tenantId/conversations', requireAdmin, requireTenant, (req,
 
 // Fields only the account owner may change. Hiding the inputs in the dashboard
 // is cosmetic — anyone can send a PUT — so the branding is enforced here.
-const OWNER_ONLY_SETTINGS = ['footerText', 'footerUrl', 'fontFamily', 'fontUrl'];
+const OWNER_ONLY_SETTINGS = ['footerText', 'footerUrl', 'fontFamily', 'fontUrl', 'suspended', 'suspendedMessage'];
 
 app.put('/api/admin/:tenantId/settings', requireAdmin, requireTenant, (req, res) => {
   const t = store.load(req.params.tenantId);

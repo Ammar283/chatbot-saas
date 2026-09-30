@@ -86,8 +86,14 @@
   .suspendBar strong { font-family: var(--display); font-size: 14px; }
   .suspendBar[hidden] { display: none; }
   .pill.paused { background: #F6DEDA; color: #7A2C20; }
-  .crow .acts { display: flex; gap: 7px; }
+  .crow .acts { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
   .crow .acts .btn { padding: 6px 12px; font-size: 12.5px; }
+  /* Which client login can open this workspace. Sits with the other row
+     actions rather than in the grid, so the column layout stays as it was. */
+  .crow .acts .assign { padding: 6px 10px; font-size: 12.5px; border: 1px solid var(--mist);
+    border-radius: 7px; background: var(--card); color: var(--ink); font-family: inherit;
+    max-width: 210px; cursor: pointer; }
+  .crow .acts .assign:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
   .banner strong { display: block; margin-bottom: 3px; }
   .chan { font-size: 12.5px; color: var(--muted); margin-bottom: 12px; }
   .chan b { color: var(--pine); }
@@ -213,7 +219,9 @@
   pre { background: var(--pine); color: #DCE6D8; padding: 14px; border-radius: 9px; overflow-x: auto; font-family: var(--mono); font-size: 12.5px; }
   .empty { text-align: center; padding: 44px 20px; color: var(--muted); }
   .empty strong { display: block; font-family: var(--display); font-size: 17px; color: var(--ink); margin-bottom: 5px; }
-  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  /* Provider errors are long sentences, not one-word statuses. A toast that
+     clips them is a toast that hides the one clue worth reading. */
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: min(560px, calc(100vw - 32px)); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; text-align: left; }
   .toast.on { opacity: 1; }
   /* ---- mobile ----
      A lead notification arrives on the owner's phone, they tap through and
@@ -275,6 +283,8 @@
     .crow .num::after { content: attr(data-label); margin-left: 5px; color: var(--muted); font-family: var(--body); }
     .crow .num small { display: none; }
     .crow .btn { width: 100%; margin-top: 6px; }
+    .crow .acts { display: block; }
+    .crow .acts .assign { width: 100%; max-width: none; margin-top: 6px; }
 
     pre { font-size: 11px; padding: 11px; }
     .conv summary { flex-direction: column; align-items: flex-start; gap: 4px; }
@@ -561,19 +571,23 @@
         <div class="field">
           <label for="sNotifyEmail">Email addresses</label>
           <div class="hint">Separate several with commas.</div>
-          <input type="text" id="sNotifyEmail" placeholder="reception@clinic.com, owner@clinic.com" />
+          <!-- autocomplete off, and a name with no "email" in it. Otherwise the
+               browser helpfully drops YOUR sign-in address into a CLIENT's lead
+               notification box, and one careless save sends their enquiries to you. -->
+          <input type="text" id="sNotifyEmail" name="lead-destination" autocomplete="off" data-lpignore="true" data-form-type="other" placeholder="reception@clinic.com, owner@clinic.com" />
         </div>
         <div class="field">
           <label for="sNotifyWa">WhatsApp number</label>
           <div class="hint">Country code, no spaces or symbols. For example 923001234567.</div>
-          <input type="text" id="sNotifyWa" placeholder="923001234567" />
+          <input type="text" id="sNotifyWa" name="lead-destination-wa" autocomplete="off" data-lpignore="true" data-form-type="other" placeholder="923001234567" />
         </div>
         <div class="field">
           <label for="sNotifyHook">Send to another system</label>
           <div class="hint">Optional. A web address that receives each lead — Zapier, Make, Slack or your own CRM.</div>
-          <input type="text" id="sNotifyHook" placeholder="https://hooks.zapier.com/..." />
+          <input type="text" id="sNotifyHook" name="lead-destination-hook" autocomplete="off" data-lpignore="true" data-form-type="other" placeholder="https://hooks.zapier.com/..." />
         </div>
         <div id="channelState"></div>
+        <p class="chanWarn" id="notifyUnsaved" hidden>Typed but not saved yet &mdash; nothing is sending to this address until you save.</p>
         <div class="row">
           <button class="btn" id="saveNotify">Save notification settings</button>
           <button class="btn ghost" id="testNotify">Send a test</button>
@@ -651,7 +665,15 @@ let tenantId = null, overview = null;
 
 let me = null;
 const key = () => '';
-function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); setTimeout(() => t.classList.remove('on'), 2200); }
+let toastTimer = null;
+function toast(msg, ms) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(toastTimer);
+  // Long messages need long enough to read. 55ms a character, floor 2.2s.
+  toastTimer = setTimeout(() => t.classList.remove('on'), ms || Math.min(12000, Math.max(2200, String(msg).length * 55)));
+}
 
 async function api(path, opts = {}) {
   const res = await fetch(API + path, {
@@ -848,7 +870,7 @@ function slip(l) {
   // A blank line reads as a bug. Say plainly that the visitor didn't give it.
   const val = (v) => v ? escapeHtml(v) : '<span class="none">not given</span>';
   return `<article class="slip ${l.status === 'contacted' ? 'done' : ''}">
-    <div class="stamp"><span class="span-new">${l.status === 'contacted' ? 'Contacted' : 'New Appointment Request'}</span><span>${when}</span></div>
+    <div class="stamp"><span class="span-new">${l.status === 'contacted' ? 'Contacted' : 'New Lead'}</span><span>${when}</span></div>
     <dl>
       <dt>Name</dt><dd>${val(l.name)}</dd>
       <dt>Phone</dt><dd class="tel">${val(l.phone)}</dd>
@@ -957,6 +979,7 @@ function fillSettings(s, publicKey) {
   paintDashLogo();
   $('#sNotifyEmail').value = s.notifyEmail || ''; $('#sNotifyWa').value = s.notifyWhatsApp || '';
   $('#sNotifyHook').value = s.notifyWebhook || '';
+  markNotifySaved();
   loadChannels();
   $('#sOrigins').value = (s.allowedOrigins || []).join('\n');
   const fields = s.leadFields || [];
@@ -1085,9 +1108,25 @@ $('#copyClientKey').onclick = () => { navigator.clipboard.writeText($('#clientKe
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
 // --- clients view (owner only) ---
+// The client logins, fetched once per render of this view and reused by both
+// the workspace rows (to fill the "assigned to" menu) and the logins panel.
+let accountCache = [];
+
+function assignOptions(current) {
+  return ['<option value="">Not assigned</option>']
+    .concat(accountCache
+      .filter((a) => a.role !== 'owner')
+      .map((a) => `<option value="${escapeHtml(a.id)}"${a.id === current ? ' selected' : ''}>${escapeHtml(a.email)}</option>`))
+    .join('');
+}
+
 async function loadClients() {
   try {
-    const d = await api('/api/admin/summary');
+    const [d, accounts] = await Promise.all([
+      api('/api/admin/summary'),
+      api('/api/admin/accounts'),
+    ]);
+    accountCache = accounts;
     $('#bizStats').innerHTML = `
       ${stat('Clients', d.clients, `${d.workspaces} workspace${d.workspaces === 1 ? '' : 's'}`, true)}
       ${stat('Leads delivered', d.totalLeads, `${d.newLeads} awaiting contact`)}
@@ -1103,11 +1142,31 @@ async function loadClients() {
         <div class="num" data-label="of cap">${r.capUsedPct}%<small>of cap</small></div>
         <span class="pill ${r.health === 'paused' ? 'paused' : r.health === 'active' ? 'active' : r.health === 'quiet' ? 'quiet' : r.health === 'at risk' ? 'risk' : 'cold'}">${r.health}</span>
         <div class="acts">
+          <select class="assign" data-assign="${escapeHtml(r.id)}" data-wsname="${escapeHtml(r.name)}" aria-label="Client login for ${escapeHtml(r.name)}">${assignOptions(r.accountId)}</select>
           <button class="btn ghost" data-pause="${escapeHtml(r.id)}" data-on="${r.suspended ? '1' : '0'}" data-name="${escapeHtml(r.name)}">${r.suspended ? 'Resume' : 'Pause'}</button>
           <button class="btn warn" data-removews="${escapeHtml(r.id)}" data-wsname="${escapeHtml(r.name)}">Remove</button>
         </div>
       </div>`).join('')
       : `<div class="empty"><strong>No workspaces yet</strong>Create one from the sidebar.</div>`;
+
+    document.querySelectorAll('[data-assign]').forEach((s) => {
+      // Remember what it was, so a rejected change snaps back rather than
+      // leaving the menu showing an assignment that never happened.
+      s.dataset.prev = s.value;
+      s.onchange = async () => {
+        const label = s.options[s.selectedIndex].textContent;
+        try {
+          await api(`/api/admin/tenants/${s.dataset.assign}/assign`, {
+            method: 'POST',
+            body: JSON.stringify({ accountId: s.value }),
+          });
+          toast(s.value
+            ? `${s.dataset.wsname} assigned to ${label}. They see it next time they sign in.`
+            : `${s.dataset.wsname} is no longer assigned to anyone. Only you can open it.`);
+          loadClients();
+        } catch (e) { toast(e.message); s.value = s.dataset.prev; }
+      };
+    });
 
     document.querySelectorAll('[data-pause]').forEach((b) => {
       b.onclick = async () => {
@@ -1157,7 +1216,7 @@ async function loadClients() {
       };
     });
 
-    loadAccounts();
+    loadAccounts(accounts);
     loadLoginBrand();
   } catch (e) { toast(e.message); }
 }
@@ -1196,8 +1255,9 @@ $('#saveLoginBrand').onclick = async () => {
   } catch (e) { toast(e.message); }
 };
 
-async function loadAccounts() {
-  const list = await api('/api/admin/accounts');
+async function loadAccounts(preloaded) {
+  const list = preloaded || await api('/api/admin/accounts');
+  accountCache = list;
   $('#accountRows').innerHTML = list.map((a) => `
     <div class="crow">
       <div><strong>${escapeHtml(a.email)}</strong><small>${a.role === 'owner' ? 'you' : (a.workspaces.join(', ') || 'no workspaces yet')}</small></div>
@@ -1213,7 +1273,7 @@ async function loadAccounts() {
       try {
         const r = await api(`/api/admin/accounts/${b.dataset.email}/email`, { method: 'POST', body: JSON.stringify({ email }) });
         toast(`Sign-in email is now ${r.email}.`);
-        loadAccounts();
+        loadClients();   // the address appears in every workspace menu too
       } catch (e) { toast(e.message); }
     };
   });
@@ -1236,9 +1296,8 @@ $('#newAccount').onclick = async () => {
   if (!password) return;
   try {
     await api('/api/admin/accounts', { method: 'POST', body: JSON.stringify({ email, password }) });
-    toast('Login created. Assign a workspace by creating it while their account is selected.');
-    loadAccounts();
-    loadLoginBrand();
+    toast('Login created. Now pick it in the menu beside a workspace to give them access.');
+    loadClients();   // so the new login is selectable straight away
   } catch (e) { toast(e.message); }
 }
 
@@ -1364,28 +1423,78 @@ async function loadChannels() {
 $('#testNotify').onclick = async () => {
   const b = $('#testNotify'); b.disabled = true; b.textContent = 'Sending…';
   try {
+    // The test runs against what the SERVER has stored, not what is on screen.
+    // So save first — otherwise typing an address and pressing test reports
+    // "nothing configured", which reads as a broken feature rather than an
+    // unsaved form.
+    if (notifyDirty() && !(await saveNotify())) { b.disabled = false; b.textContent = 'Send a test'; return; }
     const r = await api(`/api/admin/${tenantId}/channels/test`, { method: 'POST' });
-    const sent = r.results.filter((x) => x.sent).map((x) => x.sent);
+    const sent = r.results.filter((x) => x.sent);
     const failed = r.results.filter((x) => x.error);
-    if (sent.length) toast(`Test sent by ${sent.join(', ')}. Check your inbox.`);
-    else if (failed.length) toast(failed[0].error.slice(0, 90));
+    // Log the raw result. When a client says "the test said sent but nothing
+    // arrived", the reference number here is what the provider's own delivery
+    // log can be searched by.
+    console.log('[test notification]', r.results);
+    if (sent.length) {
+      const ref = sent.find((x) => x.id)?.id;
+      toast(`Accepted by ${sent.map((x) => x.sent).join(', ')}${ref ? ` (ref ${ref})` : ''}. Check inbox and spam.`);
+    } else if (failed.length) toast(failed[0].error);
     else toast('Nothing is configured to send yet.');
   } catch (e) { toast(e.message); }
   b.disabled = false; b.textContent = 'Send a test';
 };
 
+// What the server currently holds, so the panel can tell "typed" from "saved".
+// The two look identical on screen, and mistaking one for the other is how an
+// address sits in the box for a week while no lead email ever goes out.
+let savedNotify = { email: '', wa: '', hook: '' };
+
+function currentNotify() {
+  return {
+    email: $('#sNotifyEmail').value.trim(),
+    wa: $('#sNotifyWa').value.replace(/[^\d]/g, ''),
+    hook: $('#sNotifyHook').value.trim(),
+  };
+}
+
+function notifyDirty() {
+  const c = currentNotify();
+  return c.email !== savedNotify.email || c.wa !== savedNotify.wa || c.hook !== savedNotify.hook;
+}
+
+function markNotifySaved() {
+  savedNotify = currentNotify();
+  const el = $('#notifyUnsaved');
+  if (el) el.hidden = true;
+}
+
+['#sNotifyEmail', '#sNotifyWa', '#sNotifyHook'].forEach((sel) => {
+  const el = $(sel);
+  if (el) el.addEventListener('input', () => { $('#notifyUnsaved').hidden = !notifyDirty(); });
+});
+
+async function saveNotify() {
+  const next = currentNotify();
+  // A client's leads going to your own inbox is the one mistake this panel can
+  // make that nobody notices — the emails arrive, so it looks like it works.
+  const mine = String(me?.email || '').toLowerCase();
+  if (mine && next.email.toLowerCase().split(/[,\s]+/).includes(mine)) {
+    if (!confirm(`${next.email} is your own sign-in address.\n\nLead emails for this workspace would come to you instead of the client. Save anyway?`)) {
+      return false;
+    }
+  }
+  await api(`/api/admin/${tenantId}/settings`, {
+    method: 'PUT',
+    body: JSON.stringify({ notifyEmail: next.email, notifyWhatsApp: next.wa, notifyWebhook: next.hook }),
+  });
+  markNotifySaved();
+  loadChannels();
+  return true;
+}
+
 $('#saveNotify').onclick = async () => {
   try {
-    await api(`/api/admin/${tenantId}/settings`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        notifyEmail: $('#sNotifyEmail').value.trim(),
-        notifyWhatsApp: $('#sNotifyWa').value.replace(/[^\d]/g, ''),
-        notifyWebhook: $('#sNotifyHook').value.trim(),
-      }),
-    });
-    toast('Notification settings saved.');
-    loadChannels();
+    if (await saveNotify()) toast('Notification settings saved.');
   } catch (e) { toast(e.message); }
 };
 
