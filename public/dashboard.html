@@ -223,6 +223,16 @@
      clips them is a toast that hides the one clue worth reading. */
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: min(560px, calc(100vw - 32px)); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; text-align: left; }
   .toast.on { opacity: 1; }
+  /* Delivery log. Colour-coded, but never colour alone — the event name and the
+     plain-English line carry the meaning on their own. */
+  .evlist { list-style: none; margin: 8px 0 0; padding: 0; }
+  .ev { border-left: 3px solid var(--mist); padding: 6px 0 6px 10px; margin-bottom: 6px; font-size: 13px; }
+  .ev.ok { border-left-color: var(--pine); }
+  .ev.problem { border-left-color: var(--clay); }
+  .ev.pending { border-left-color: var(--brass); }
+  .ev span { color: var(--muted); margin-left: 8px; font-size: 12px; }
+  .ev em { display: block; font-style: normal; color: var(--muted); margin-top: 2px; }
+  #diagnosis:not(:empty) { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--mist); }
   /* ---- mobile ----
      A lead notification arrives on the owner's phone, they tap through and
      need to call back. Phone is the primary surface for this product, not an
@@ -591,7 +601,9 @@
         <div class="row">
           <button class="btn" id="saveNotify">Save notification settings</button>
           <button class="btn ghost" id="testNotify">Send a test</button>
+          <button class="btn ghost" id="diagnoseNotify" hidden>Why has nothing arrived?</button>
         </div>
+        <div id="diagnosis"></div>
       </div>
 
       <div class="panel" id="footerPanel" hidden>
@@ -870,7 +882,7 @@ function slip(l) {
   // A blank line reads as a bug. Say plainly that the visitor didn't give it.
   const val = (v) => v ? escapeHtml(v) : '<span class="none">not given</span>';
   return `<article class="slip ${l.status === 'contacted' ? 'done' : ''}">
-    <div class="stamp"><span class="span-new">${l.status === 'contacted' ? 'Contacted' : 'New Lead'}</span><span>${when}</span></div>
+    <div class="stamp"><span class="span-new">${l.status === 'contacted' ? 'Contacted' : 'New Appointment Request'}</span><span>${when}</span></div>
     <dl>
       <dt>Name</dt><dd>${val(l.name)}</dd>
       <dt>Phone</dt><dd class="tel">${val(l.phone)}</dd>
@@ -1412,8 +1424,11 @@ async function loadChannels() {
   try {
     const st = await api(`/api/admin/${tenantId}/channels`);
     const live = st.live?.length
-      ? `<p class="chan">Currently sending by <b>${st.live.join('</b>, <b>')}</b>.</p>`
+      ? `<p class="chan">Currently sending by <b>${st.live.join('</b>, <b>')}</b>${st.via ? ` &mdash; through ${escapeHtml(st.via)}` : ''}.</p>`
       : `<p class="chan">Nothing is being sent yet.</p>`;
+    // Only you can see the provider's log, and only when email is actually on.
+    const diag = $('#diagnoseNotify');
+    if (diag) diag.hidden = !(me && me.role === 'owner' && st.live?.includes('email'));
     const probs = (st.problems || []).map((p) => `<p class="chanWarn">${escapeHtml(p)}</p>`).join('');
     const notes = (st.notes || []).map((n) => `<p class="chan">${escapeHtml(n)}</p>`).join('');
     $('#channelState').innerHTML = live + notes + probs;
@@ -1496,6 +1511,56 @@ $('#saveNotify').onclick = async () => {
   try {
     if (await saveNotify()) toast('Notification settings saved.');
   } catch (e) { toast(e.message); }
+};
+
+// --- delivery diagnosis ------------------------------------------------
+// Reads the provider's own log for these addresses and says, in words, what
+// became of the messages already sent.
+$('#diagnoseNotify').onclick = async () => {
+  const b = $('#diagnoseNotify'); b.disabled = true; b.textContent = 'Checking…';
+  const box = $('#diagnosis');
+  try {
+    const d = await api(`/api/admin/${tenantId}/channels/diagnose`);
+    const parts = [];
+
+    for (const c of d.checks || []) {
+      parts.push(`<p class="chan"><b>${escapeHtml(c.label)}:</b> ${escapeHtml(c.value)}</p>`);
+    }
+    for (const p of d.problems || []) parts.push(`<p class="chanWarn">${escapeHtml(p)}</p>`);
+    if (d.note) parts.push(`<p class="chan">${escapeHtml(d.note)}</p>`);
+
+    for (const [addr, events] of Object.entries(d.events || {})) {
+      if (!events.length) continue;
+      parts.push(`<p class="chan"><b>${escapeHtml(addr)}</b> &mdash; last ${events.length} event${events.length === 1 ? '' : 's'}:</p>`);
+      parts.push('<ul class="evlist">' + events.slice(0, 6).map((e) => `
+        <li class="ev ${escapeHtml(e.level)}">
+          <b>${escapeHtml(e.event)}</b>
+          <span>${e.at ? escapeHtml(new Date(e.at).toLocaleString()) : ''}</span>
+          ${e.meaning ? `<em>${escapeHtml(e.meaning)}</em>` : ''}
+          ${e.reason ? `<em>${escapeHtml(e.reason)}</em>` : ''}
+        </li>`).join('') + '</ul>');
+    }
+
+    for (const addr of d.blocked || []) {
+      parts.push(`<p><button class="btn warn" data-unblock="${escapeHtml(addr)}">Unblock ${escapeHtml(addr)} at Brevo</button></p>`);
+    }
+
+    if (!parts.length) parts.push('<p class="chan">Nothing to report — no problems found.</p>');
+    box.innerHTML = parts.join('');
+
+    document.querySelectorAll('[data-unblock]').forEach((u) => {
+      u.onclick = async () => {
+        try {
+          await api(`/api/admin/${tenantId}/channels/unblock`, { method: 'POST', body: JSON.stringify({ email: u.dataset.unblock }) });
+          toast(`${u.dataset.unblock} unblocked. Send a test again.`);
+          $('#diagnoseNotify').click();
+        } catch (e) { toast(e.message); }
+      };
+    });
+  } catch (e) {
+    box.innerHTML = `<p class="chanWarn">${escapeHtml(e.message)}</p>`;
+  }
+  b.disabled = false; b.textContent = 'Why has nothing arrived?';
 };
 
 async function loadStatus() {

@@ -8,6 +8,7 @@ import * as store from './lib/store.js';
 import * as auth from './lib/auth.js';
 import * as health from './lib/health.js';
 import { notifyLead, channelsConfigured, notifyStatus } from './lib/notify.js';
+import * as brevo from './lib/brevo.js';
 import { create as createBackup } from './scripts/backup.js';
 import { buildIndex, bm25, fuse, cosine, cacheLookup, cacheStore, cacheClear } from './lib/retrieve.js';
 import { chat, embed, needsSmartModel } from './lib/llm.js';
@@ -798,6 +799,56 @@ app.post('/api/admin/:tenantId/channels/test', requireAdmin, requireTenant, asyn
     res.json({ results });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// "It says sent, but nothing arrived." Accepting a message and delivering it
+// are different events, and only the provider knows what happened in between.
+// This asks them, so the answer is a specific cause rather than a guess.
+app.get('/api/admin/:tenantId/channels/diagnose', requireAdmin, requireTenant, requireOwner, async (req, res) => {
+  const t = store.load(req.params.tenantId);
+  const to = [
+    ...String(t.settings.notifyEmail || '').split(/[,\s]+/),
+    ...String(process.env.LEAD_COPY_EMAIL || '').split(/[,\s]+/),
+  ].filter(Boolean);
+
+  if (process.env.SMTP_HOST) {
+    return res.json({
+      transport: 'smtp',
+      ok: true,
+      checks: [{ label: 'Transport', value: `SMTP via ${process.env.SMTP_HOST}`, level: 'ok' }],
+      problems: [],
+      events: {},
+      note: 'SMTP reports success or refusal at send time, so the result of Send a test is already the real answer. There is no separate delivery log to read.',
+    });
+  }
+  if (!process.env.BREVO_API_KEY) {
+    return res.json({ transport: 'none', ok: false, checks: [], events: {},
+      problems: ['No BREVO_API_KEY and no SMTP_HOST on the server, so nothing can send at all.'] });
+  }
+  if (!to.length) {
+    return res.json({ transport: 'brevo', ok: false, checks: [], events: {},
+      problems: ['No notification address is saved for this workspace yet.'] });
+  }
+  try {
+    const out = await brevo.diagnose(to, process.env.NOTIFY_FROM);
+    res.json({ transport: 'brevo', ...out });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// A bounce puts an address on Brevo's blocked list, and from then on every send
+// is accepted and quietly dropped. Removing it is one call, but only findable
+// if you already know the list exists.
+app.post('/api/admin/:tenantId/channels/unblock', requireAdmin, requireTenant, requireOwner, async (req, res) => {
+  const email = String(req.body?.email || '').trim();
+  if (!email) return res.status(400).json({ error: 'Which address should be unblocked?' });
+  try {
+    await brevo.unblock(email);
+    res.json({ ok: true, email });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
   }
 });
 
