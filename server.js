@@ -272,10 +272,42 @@ app.post('/api/chat', async (req, res) => {
 // Ping once when the lead first becomes reachable, and once more when every
 // detail is in. Not on every field, or it becomes noise the owner learns to
 // ignore — which is the same as not sending it at all.
+// One lead, one email.
+//
+// Details arrive a message at a time — name, then phone, then maybe an email —
+// so the obvious approach of "notify as soon as we can reach them" fires again
+// every time something new turns up, and the client gets the same enquiry two
+// or three times with slightly different contents. That reads as a broken
+// product, and it buries the second real lead under the duplicate of the first.
+//
+// So: the moment a lead is reachable, start a short timer. Anything else the
+// visitor volunteers lands on the same lead object before it expires, and one
+// complete email goes out. If they give everything up front, there is nothing
+// left to wait for and it sends immediately.
+const pendingNotify = new Map();
+const NOTIFY_WAIT_MS = Number(process.env.NOTIFY_WAIT_MS || 90000);
+
 function notifyOnce(tenant, lead) {
-  const stage = lead.complete ? 'complete' : lead.contactable ? 'contactable' : null;
-  if (!stage || lead.notifiedStage === stage || lead.notifiedStage === 'complete') return;
-  lead.notifiedStage = stage;
+  if (lead.notifiedStage === 'sent') return;
+  if (!lead.contactable && !lead.complete) return;
+
+  const key = `${tenant.id}:${lead.conversationId}`;
+
+  if (lead.complete) {
+    clearTimeout(pendingNotify.get(key));
+    pendingNotify.delete(key);
+    return fireNotify(tenant, lead, key);
+  }
+  if (pendingNotify.has(key)) return;   // already waiting; the lead fills in place
+  pendingNotify.set(key, setTimeout(() => fireNotify(tenant, lead, key), NOTIFY_WAIT_MS));
+}
+
+function fireNotify(tenant, lead, key) {
+  if (lead.notifiedStage === 'sent') return;
+  lead.notifiedStage = 'sent';
+  pendingNotify.delete(key);
+  store.save(tenant.id);
+
   // Deliberately not awaited: the visitor should never wait on an email.
   //
   // If every channel fails, put the marker back. Otherwise one bad afternoon at
@@ -297,6 +329,20 @@ function notifyOnce(tenant, lead) {
       store.save(tenant.id);
     });
 }
+
+// A redeploy in the middle of that wait would otherwise drop the notification
+// entirely — the visitor has gone, so no later message will retrigger it.
+function flushPendingNotifications() {
+  for (const [key, timer] of pendingNotify) {
+    clearTimeout(timer);
+    const [tenantId, convId] = key.split(':');
+    const t = store.load(tenantId);
+    const lead = t?.leads?.find((l) => l.conversationId === convId);
+    if (lead) fireNotify(t, lead, key);
+  }
+}
+process.on('SIGTERM', flushPendingNotifications);
+process.on('SIGINT', flushPendingNotifications);
 
 // The gaps list is only useful if every line is a real question the knowledge
 // base failed to answer. Contact details, greetings and questions about the
