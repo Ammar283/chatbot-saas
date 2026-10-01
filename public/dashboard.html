@@ -699,6 +699,9 @@ async function api(path, opts = {}) {
   if (res.status === 401) { location.href = '/login.html'; throw new Error('Please sign in.'); }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'Request failed.');
+  // Settings just saved: what is on screen is now what the server holds, so the
+  // form is no longer "being edited" and may be refreshed again.
+  if (opts.method && opts.method !== 'GET' && /\/settings$/.test(path)) settingsTouched = false;
   return data;
 }
 
@@ -747,7 +750,7 @@ $('#signOut').onclick = async () => {
 $('#tenant').addEventListener('change', () => {
   tenantId = $('#tenant').value;
   localStorage.setItem('ws', tenantId);
-  loadOverview();
+  loadOverview(true);   // different workspace — the form must repopulate
 });
 
 // A refresh that lands on an empty sidebar looks like lost data. One transient
@@ -770,7 +773,7 @@ async function loadTenants(select, attempt = 0) {
       const want = select || localStorage.getItem('ws');
       tenantId = list.some((t) => t.id === want) ? want : list[0].id;
       $('#tenant').value = tenantId;
-      loadOverview();
+      loadOverview(true);   // first load of this workspace
     } else {
       tenantId = null;
       $('#tenantLine').textContent = 'Create your first workspace to begin.';
@@ -811,7 +814,7 @@ $('#wsCreate').onclick = async () => {
 };
 
 // ---- overview ----
-async function loadOverview() {
+async function loadOverview(force = false) {
   if (!tenantId) return;
   try {
     overview = await api(`/api/admin/${tenantId}/overview`);
@@ -848,7 +851,7 @@ async function loadOverview() {
     if (pv) pv.href = '/login.html?w=' + encodeURIComponent(tenantId);
     $('#accessPanel').hidden = !o.clientKey;
     if (o.clientKey) $('#clientKey').textContent = o.clientKey;
-    fillSettings(o.settings, o.publicKey);
+    fillSettings(o.settings, o.publicKey, force);
     loadStatus();
   } catch (e) { toast(e.message); }
 }
@@ -973,7 +976,31 @@ $('#kbClear').onclick = async () => {
 };
 
 // ---- settings ----
-function fillSettings(s, publicKey) {
+// Has someone started editing the settings form since it was last filled?
+// Tracked rather than inferred, because a half-typed value is indistinguishable
+// from a saved one by looking at the field alone.
+let settingsTouched = false;
+document.addEventListener('input', (e) => {
+  if ($('#v-settings')?.contains(e.target)) settingsTouched = true;
+});
+
+function settingsBusy() {
+  const view = $('#v-settings');
+  if (!view) return false;
+  // Typing at this very moment.
+  const a = document.activeElement;
+  if (a && view.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return true;
+  // Or typed earlier, wandered off, and has not saved yet.
+  return settingsTouched;
+}
+
+// `force` is for a deliberate change of context — switching workspace, first
+// load — where the form SHOULD be repopulated. Everything else, in particular
+// the background poll, must leave a form someone is working in alone: watching
+// a half-written greeting revert with no explanation is the bug this prevents.
+function fillSettings(s, publicKey, force = false) {
+  if (!force && settingsBusy()) return;
+  if (force) settingsTouched = false;
   $('#sBotName').value = s.botName; $('#sGreeting').value = s.greeting; $('#sAccent').value = s.accent;
   $('#sStatus').value = s.statusText ?? '';
   $('#sTone').value = s.tone; $('#sLangs').value = s.languages; $('#sFacts').value = s.businessFacts;
