@@ -232,6 +232,9 @@
   .ev.pending { border-left-color: var(--brass); }
   .ev span { color: var(--muted); margin-left: 8px; font-size: 12px; }
   .ev em { display: block; font-style: normal; color: var(--muted); margin-top: 2px; }
+  .ev.past { opacity: .55; }
+  .ev .tag { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; border: 1px solid var(--mist);
+    border-radius: 99px; padding: 1px 7px; margin-left: 6px; }
   #diagnosis:not(:empty) { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--mist); }
   /* ---- mobile ----
      A lead notification arrives on the owner's phone, they tap through and
@@ -1527,15 +1530,23 @@ $('#diagnoseNotify').onclick = async () => {
       parts.push(`<p class="chan"><b>${escapeHtml(c.label)}:</b> ${escapeHtml(c.value)}</p>`);
     }
     for (const p of d.problems || []) parts.push(`<p class="chanWarn">${escapeHtml(p)}</p>`);
+    for (const n of d.notes || []) parts.push(`<p class="chan">${escapeHtml(n)}</p>`);
     if (d.note) parts.push(`<p class="chan">${escapeHtml(d.note)}</p>`);
 
     for (const [addr, events] of Object.entries(d.events || {})) {
       if (!events.length) continue;
-      parts.push(`<p class="chan"><b>${escapeHtml(addr)}</b> &mdash; last ${events.length} event${events.length === 1 ? '' : 's'}:</p>`);
-      parts.push('<ul class="evlist">' + events.slice(0, 6).map((e) => `
-        <li class="ev ${escapeHtml(e.level)}">
+      // Everything sharing the newest message id is the attempt that matters;
+      // the rest is history and is labelled as such, so an old failure is not
+      // mistaken for a live one.
+      const latestId = events[0].messageId;
+      const isCurrent = (e) => (latestId ? e.messageId === latestId : e === events[0]);
+      const shown = events.slice(0, 8);
+      parts.push(`<p class="chan"><b>${escapeHtml(addr)}</b></p>`);
+      parts.push('<ul class="evlist">' + shown.map((e) => `
+        <li class="ev ${escapeHtml(e.level)}${isCurrent(e) ? '' : ' past'}">
           <b>${escapeHtml(e.event)}</b>
           <span>${e.at ? escapeHtml(new Date(e.at).toLocaleString()) : ''}</span>
+          ${isCurrent(e) ? '<span class="tag">latest</span>' : '<span class="tag">earlier</span>'}
           ${e.meaning ? `<em>${escapeHtml(e.meaning)}</em>` : ''}
           ${e.reason ? `<em>${escapeHtml(e.reason)}</em>` : ''}
         </li>`).join('') + '</ul>');
