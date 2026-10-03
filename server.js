@@ -208,23 +208,36 @@ app.post('/api/chat', async (req, res) => {
       : /phone|number|whatsapp|mobile/i.test(lastBotMessage) ? 'phone'
       : /name/i.test(lastBotMessage) ? 'name'
       : null;
+    // Capture contact details from the raw message first — this must not
+    // depend on the model call succeeding.
+    //
+    // And it has to happen BEFORE the prompt is built. Built first, the prompt
+    // describes the lead as it was at the START of this turn, so a visitor who
+    // has just typed their number is still listed under STILL NEEDED and the
+    // model asks for it again. They answer, it asks again, and they leave —
+    // the number sitting in the database the whole time.
+    const scanned = cleanLead(extractFromMessage(message, asking));
+    const gaveDetails = Object.keys(scanned).length > 0;
+    const scannedLead = mergeLead(tenant, convId, scanned);
+    if (scannedLead) { store.save(tenant.id); notifyOnce(tenant, scannedLead); }
+
+    // Everything known about this visitor including what they just said.
+    const leadNow = { ...knownLead, ...scanned };
+
     const messages = [
-      { role: 'system', content: buildSystemPrompt(tenant, results, knownLead) },
+      { role: 'system', content: buildSystemPrompt(tenant, results, leadNow) },
       // Two exchanges is enough to follow a thread. Six long turns is most of a
       // token budget spent re-reading answers the model itself just wrote.
       ...history.slice(-4).map((h) => ({ role: h.role, content: String(h.content).slice(0, 400) })),
       { role: 'user', content: message.slice(0, 1000) },
     ];
 
-    // Capture contact details from the raw message first — this must not
-    // depend on the model call succeeding.
-    const scanned = cleanLead(extractFromMessage(message, asking));
-    const gaveDetails = Object.keys(scanned).length > 0;
-    const scannedLead = mergeLead(tenant, convId, scanned);
-    if (scannedLead) { store.save(tenant.id); notifyOnce(tenant, scannedLead); }
-
     const model = needsSmartModel(message, results) ? process.env.LLM_MODEL_SMART : process.env.LLM_MODEL;
-    const out = await chat(messages, { model, json: true, maxTokens: 500 });
+    // These models spend tokens reasoning before they write, so a ceiling that
+    // looks generous for a 60-word answer can still cut the reply off partway
+    // through the JSON. Modest headroom, since output counts against the
+    // per-minute budget too.
+    const out = await chat(messages, { model, json: true, maxTokens: 700 });
     const reply = parseReply(out.text, tenant);
 
     store.recordUsage(tenant, { inputTokens: out.inputTokens, outputTokens: out.outputTokens });
@@ -279,7 +292,7 @@ app.post('/api/chat', async (req, res) => {
 
     // A blank reply reads as a broken bot. Fall back to something sensible.
     if (!reply.answer.trim()) {
-      const merged = { ...knownLead, ...reply.lead };
+      const merged = { ...leadNow, ...reply.lead };
       reply.answer = isComplete(merged, required)
         ? (tenant.settings.bookingConfirmation || DEFAULT_CONFIRMATION)
         : tenant.settings.handoffMessage;
