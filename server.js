@@ -165,8 +165,15 @@ app.post('/api/chat', async (req, res) => {
 
   try {
     // 1. Cache. Free, instant, and covers the repeat questions.
+    //
+    // This used to apply only to the first message of a conversation, which
+    // threw away most of its value: a visitor browsing a topic asks the same
+    // question in different words several times, and every repeat at turn 8 or
+    // turn 15 paid for a full model call. A question that stands on its own can
+    // be answered from cache wherever it appears.
+    const lastBotTurn = [...history].reverse().find((h) => h.role === 'assistant')?.content || '';
     const cached = cacheLookup(tenant, message);
-    if (cached && history.length === 0) {
+    if (cached && (history.length === 0 || selfContained(message, lastBotTurn))) {
       store.recordUsage(tenant, { cached: true });
       logTurn(tenant, convId, message, cached, { cached: true });
       store.save(tenant.id);
@@ -203,7 +210,9 @@ app.post('/api/chat', async (req, res) => {
       : null;
     const messages = [
       { role: 'system', content: buildSystemPrompt(tenant, results, knownLead) },
-      ...history.slice(-6).map((h) => ({ role: h.role, content: String(h.content).slice(0, 1000) })),
+      // Two exchanges is enough to follow a thread. Six long turns is most of a
+      // token budget spent re-reading answers the model itself just wrote.
+      ...history.slice(-4).map((h) => ({ role: h.role, content: String(h.content).slice(0, 400) })),
       { role: 'user', content: message.slice(0, 1000) },
     ];
 
@@ -222,7 +231,8 @@ app.post('/api/chat', async (req, res) => {
     health.recordSuccess(reply.grounded);
 
     // Only cache grounded, standalone answers — never anything conversational.
-    if (reply.grounded && history.length === 0 && !reply.handoff) {
+    if (reply.grounded && !reply.handoff && !gaveDetails
+        && (history.length === 0 || selfContained(message, lastBotMessage))) {
       cacheStore(tenant, message, reply.answer);
     }
 
@@ -241,6 +251,29 @@ app.post('/api/chat', async (req, res) => {
       leadTurn: gaveDetails || asking !== null,
     });
     store.save(tenant.id);
+
+    // The bot could not answer, and has no way to reach this visitor.
+    //
+    // This is the most valuable moment in the whole conversation and the one
+    // the product was losing: the visitor asked for something specific enough
+    // that nobody had written it down, got "I'll check with the team", and
+    // closed the tab. No name, no number, nothing to follow up — the enquiry
+    // most likely to convert leaves the least behind.
+    //
+    // The prompt asks the model to do this, but a conversion step this
+    // important is not left to whether the model felt like following an
+    // instruction. Appended here so it happens either way.
+    if (!reply.grounded || reply.handoff) {
+      const conv = tenant.conversations.find((c) => c.id === convId);
+      // Remember what they asked, so the lead reaches the client as "wants the
+      // JetGo 550Mti-RJ" rather than an anonymous name and number.
+      if (conv && !reply.grounded && !conv.unanswered) {
+        conv.unanswered = message.trim().slice(0, 120);
+        store.save(tenant.id);
+      }
+      const current = tenant.leads.find((l) => l.conversationId === convId) || {};
+      reply.answer = appendCallbackAsk(tenant, reply.answer, current, required);
+    }
 
     // A blank reply reads as a broken bot. Fall back to something sensible.
     if (!reply.answer.trim()) {
@@ -372,6 +405,54 @@ function isKnowledgeGap(turn) {
   return true;
 }
 
+// Make sure an "I can't answer that" message ends by asking how to reach them.
+//
+// Phone comes first deliberately. A question the knowledge base cannot answer
+// usually needs a conversation, not an email thread — and a number the client
+// can ring while the visitor is still interested is worth more than an address
+// they will reply to in three days.
+function appendCallbackAsk(tenant, answer, lead, required) {
+  // Only what a callback actually needs: a number, and a name to ask for.
+  // Email is left to the normal booking flow — once the client can ring them,
+  // a third ask stops being helpful and starts being a form.
+  const wants = required.includes('phone') ? ['phone', 'name'] : ['email', 'name'];
+  const order = wants.filter((f) => required.includes(f));
+  const missing = order.find((f) => !String(lead[f] || '').trim());
+  if (!missing) return answer;                    // already reachable, nothing to ask
+
+  const text = String(answer || '').trim();
+  // The model may have asked already. Two questions in one message reads as a
+  // form, and people answer neither.
+  if (/\?\s*$/.test(text)) return text;
+
+  const ASK = {
+    phone: tenant.settings.unansweredAsk
+      || 'What is the best number to reach you on? Someone from the team will call you back with an answer.',
+    name: 'Could I take your name so the team can come back to you?',
+    email: 'What email should the team send the answer to?',
+  };
+  return text ? `${text} ${ASK[missing]}` : ASK[missing];
+}
+
+// Can this message be answered without knowing what was said before it?
+//
+// "What are the benefits of professional whitening?" can, wherever it appears.
+// "What about the other one?" cannot, and serving a cached answer to it would
+// be a non-sequitur. Deliberately strict: a wrong "no" only costs a model call,
+// while a wrong "yes" puts an irrelevant answer in front of a visitor.
+function selfContained(message, lastBotMessage = '') {
+  const m = String(message || '').trim().toLowerCase();
+  if (m.length < 15) return false;
+  // Replies to the bot's own question belong to the conversation, not the cache.
+  // This also keeps lead capture intact: the bot asks for a name, and the
+  // answer must never be served from a cache of someone else's name.
+  if (/\?\s*$/.test(String(lastBotMessage).trim())) return false;
+  if (/^(yes|no|yeah|yep|nope|ok|okay|sure|thanks|thank you|please|got it)\b/.test(m)) return false;
+  // Words that point back at something earlier.
+  if (/\b(it|its|that|this|those|these|them|they|the other|another one|same|again|instead)\b/.test(m)) return false;
+  return true;
+}
+
 function mergeLead(tenant, convId, fields) {
   if (!Object.keys(fields).length) return null;
   const required = tenant.settings.leadFields || ['name', 'phone'];
@@ -391,6 +472,9 @@ function mergeLead(tenant, convId, fields) {
   lead.missing = required.filter((f) => !String(lead[f] || '').trim());
   const conv = tenant.conversations.find((c) => c.id === convId);
   if (conv?.turns?.length) lead.firstQuestion = conv.turns[0].q;
+  // The question the bot could not answer is why this person is worth calling.
+  // Without it the client gets a name and a number and no idea what to say.
+  if (!String(lead.intent || '').trim() && conv?.unanswered) lead.intent = conv.unanswered;
   return lead;
 }
 

@@ -127,7 +127,7 @@
   .nav button:hover { background: rgba(255,255,255,.08); color: #fff; }
   .nav button[aria-current="true"] { background: var(--brass); color: var(--onBrass); font-weight: 600; }
   /* A translucent white stays readable whatever the rail colour is set to. */
-  .nav .count {  background: rgba(255,255,255,.16); font-family: var(--mono); font-size: 11px;
+  .nav .count { color: #fff; background: rgba(255,255,255,.16); font-family: var(--mono); font-size: 11px;
                 opacity: .95; padding: 3px 8px; border-radius: 3px; }
   .main { padding: 30px 34px 60px; max-width: 1334px; }
 
@@ -553,6 +553,11 @@
           <input type="text" id="sBooking" />
         </div>
         <div class="field">
+          <label for="sUnanswered">When it can't answer, how it asks to call back</label>
+          <div class="hint">Added automatically when the bot cannot answer and has no number yet. This is where your best leads come from &mdash; the visitor wanted something specific enough that nobody wrote it down.</div>
+          <input type="text" id="sUnanswered" placeholder="What is the best number to reach you on? Someone from the team will call you back with an answer." />
+        </div>
+        <div class="field">
           <label for="sHandoff">When it doesn't know</label>
           <div class="hint">Shown instead of a guess.</div>
           <input type="text" id="sHandoff" />
@@ -888,7 +893,7 @@ function slip(l) {
   // A blank line reads as a bug. Say plainly that the visitor didn't give it.
   const val = (v) => v ? escapeHtml(v) : '<span class="none">not given</span>';
   return `<article class="slip ${l.status === 'contacted' ? 'done' : ''}">
-    <div class="stamp"><span class="span-new">${l.status === 'contacted' ? 'Contacted' : 'New Lead'}</span><span>${when}</span></div>
+    <div class="stamp"><span class="span-new">${l.status === 'contacted' ? 'Contacted' : 'New Appointment Request'}</span><span>${when}</span></div>
     <dl>
       <dt>Name</dt><dd>${val(l.name)}</dd>
       <dt>Phone</dt><dd class="tel">${val(l.phone)}</dd>
@@ -1005,6 +1010,7 @@ function fillSettings(s, publicKey, force = false) {
   $('#sStatus').value = s.statusText ?? '';
   $('#sTone').value = s.tone; $('#sLangs').value = s.languages; $('#sFacts').value = s.businessFacts;
   $('#sHandoff').value = s.handoffMessage; $('#sCap').value = s.monthlyMessageCap;
+  $('#sUnanswered').value = s.unansweredAsk || '';
   $('#sBooking').value = s.bookingConfirmation || '';
   $('#sLogo').value = s.logoUrl || ''; $('#sTeaser').value = s.teaser || '';
   $('#sBrandName').value = s.brandName || ''; $('#sDashAccent').value = s.dashboardAccent || '';
@@ -1128,6 +1134,7 @@ $('#saveSettings').onclick = async () => {
         statusText: $('#sStatus').value.trim(),
         tone: $('#sTone').value, languages: $('#sLangs').value, businessFacts: $('#sFacts').value,
         handoffMessage: $('#sHandoff').value, monthlyMessageCap: Number($('#sCap').value) || 5000,
+        unansweredAsk: $('#sUnanswered').value,
         bookingConfirmation: $('#sBooking').value,
         logoUrl: $('#sLogo').value.trim(), teaser: $('#sTeaser').value.trim(),
         brandName: $('#sBrandName').value.trim(), dashboardAccent: $('#sDashAccent').value.trim(),
