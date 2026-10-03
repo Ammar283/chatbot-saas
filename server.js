@@ -272,7 +272,9 @@ app.post('/api/chat', async (req, res) => {
         store.save(tenant.id);
       }
       const current = tenant.leads.find((l) => l.conversationId === convId) || {};
-      reply.answer = appendCallbackAsk(tenant, reply.answer, current, required);
+      // Strip the repeated apology before appending the ask, so what is left is
+      // the question rather than three restatements of the same regret.
+      reply.answer = appendCallbackAsk(tenant, dropRepeats(reply.answer, history), current, required);
     }
 
     // A blank reply reads as a broken bot. Fall back to something sensible.
@@ -432,6 +434,27 @@ function appendCallbackAsk(tenant, answer, lead, required) {
     email: 'What email should the team send the answer to?',
   };
   return text ? `${text} ${ASK[missing]}` : ASK[missing];
+}
+
+// Models restate their last apology every turn while collecting details, so a
+// visitor handing over a name and a number reads "I'm sorry, I don't have the
+// pricing details" three times in a row. The prompt asks it not to; this makes
+// sure. Any sentence the bot has already sent in this conversation is dropped,
+// keeping the last one so there is always something to reply to.
+function dropRepeats(answer, history) {
+  const said = new Set(
+    history.filter((h) => h.role === 'assistant')
+      .flatMap((h) => String(h.content).split(/(?<=[.!?])\s+/))
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  if (!said.size) return answer;
+
+  const parts = String(answer || '').split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+  if (parts.length < 2) return answer;
+
+  const kept = parts.filter((p, i) => i === parts.length - 1 || !said.has(p.toLowerCase()));
+  return kept.join(' ').trim() || answer;
 }
 
 // Can this message be answered without knowing what was said before it?
