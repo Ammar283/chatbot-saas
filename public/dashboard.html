@@ -223,6 +223,33 @@
      clips them is a toast that hides the one clue worth reading. */
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: min(560px, calc(100vw - 32px)); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; text-align: left; }
   .toast.on { opacity: 1; }
+  /* Usage meters. A ratio against a hard limit is a meter, not a chart: one hue,
+     a light track of the same hue, and the state said in words beside the number
+     so it never depends on colour alone. */
+  .meter { margin: 0 0 16px; }
+  .meter + .meter { padding-top: 14px; border-top: 1px solid var(--mist); }
+  .meterTop { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .meterLabel { font-weight: 600; }
+  .meterVal { font-family: var(--mono); font-size: 13px; }
+  .meterTrack { height: 8px; border-radius: 99px; margin-top: 7px; overflow: hidden; }
+  .meterFill { height: 100%; border-radius: 99px; transition: width .3s; }
+  .meterNote { font-size: 12.5px; color: var(--muted); margin-top: 5px; }
+  .meterNote b { font-weight: 600; color: var(--ink); }
+  .ok   .meterTrack { background: color-mix(in srgb, var(--pine) 15%, #fff); }
+  .ok   .meterFill  { background: var(--pine); }
+  .warn .meterTrack { background: color-mix(in srgb, var(--brass) 18%, #fff); }
+  .warn .meterFill  { background: var(--brass); }
+  .crit .meterTrack { background: color-mix(in srgb, var(--clay) 15%, #fff); }
+  .crit .meterFill  { background: var(--clay); }
+  .usageDays { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
+  .usageDays th { text-align: left; font-weight: 600; font-size: 11.5px; text-transform: uppercase;
+    letter-spacing: .04em; color: var(--muted); padding: 0 0 6px; }
+  .usageDays td { padding: 5px 0; border-top: 1px solid var(--mist); font-family: var(--mono); }
+  .usageDays td:first-child { font-family: var(--body); }
+  .usageDays td:not(:first-child) { text-align: right; }
+  .usageModel { font-size: 13px; margin: 20px 0 9px; font-family: var(--mono); color: var(--muted); }
+  .usageModel:first-child { margin-top: 4px; }
+  .usageHist { margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--mist); font-family: var(--body); }
   /* Delivery log. Colour-coded, but never colour alone — the event name and the
      plain-English line carry the meaning on their own. */
   .evlist { list-style: none; margin: 8px 0 0; padding: 0; }
@@ -472,6 +499,13 @@
           <button class="btn" id="saveLoginBrand">Save sign-in page</button>
           <a class="btn ghost" id="previewLogin" href="/login.html" target="_blank" rel="noopener">Preview</a>
         </div>
+      </div>
+
+      <div class="panel" id="usagePanel" hidden>
+        <h2>Today at the model provider</h2>
+        <p class="sub">Limits are counted per model and reset daily. Running out here stops every client&rsquo;s bot at once, so it is worth seeing before it happens.</p>
+        <div id="usageMeters"></div>
+        <div id="usageHistory"></div>
       </div>
 
       <div class="panel" id="archivePanel" hidden>
@@ -893,7 +927,7 @@ function slip(l) {
   // A blank line reads as a bug. Say plainly that the visitor didn't give it.
   const val = (v) => v ? escapeHtml(v) : '<span class="none">not given</span>';
   return `<article class="slip ${l.status === 'contacted' ? 'done' : ''}">
-    <div class="stamp"><span class="span-new">${l.status === 'contacted' ? 'Contacted' : 'New Appointment Request'}</span><span>${when}</span></div>
+    <div class="stamp"><span class="span-new">${l.status === 'contacted' ? 'Contacted' : 'New Lead'}</span><span>${when}</span></div>
     <dl>
       <dt>Name</dt><dd>${val(l.name)}</dd>
       <dt>Phone</dt><dd class="tel">${val(l.phone)}</dd>
@@ -1267,7 +1301,66 @@ async function loadClients() {
 
     loadAccounts(accounts);
     loadLoginBrand();
+    loadUsage();
   } catch (e) { toast(e.message); }
+}
+
+// --- provider usage ----------------------------------------------------
+
+const compact = (n) => (n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'K' : String(n));
+
+// Three states, said in words as well as colour. Someone who cannot tell the
+// green from the amber still reads "getting close".
+function usageState(pct) {
+  if (pct >= 90) return { cls: 'crit', word: 'nearly out' };
+  if (pct >= 70) return { cls: 'warn', word: 'getting close' };
+  return { cls: 'ok', word: 'comfortable' };
+}
+
+// A ratio against a hard limit is a meter, not a chart: one hue, a track of the
+// same hue, and the number spelled out beside it.
+function meter(label, used, limit, unit) {
+  const pct = limit ? Math.round((used / limit) * 100) : 0;
+  const s = usageState(pct);
+  return `
+    <div class="meter ${s.cls}">
+      <div class="meterTop">
+        <span class="meterLabel">${escapeHtml(label)}</span>
+        <span class="meterVal">${compact(used)} / ${compact(limit)} &middot; ${pct}%</span>
+      </div>
+      <div class="meterTrack"><div class="meterFill" style="width:${Math.min(100, pct)}%"></div></div>
+      <div class="meterNote"><b>${s.word}</b> &mdash; ${compact(Math.max(0, limit - used))} ${escapeHtml(unit)} left today</div>
+    </div>`;
+}
+
+async function loadUsage() {
+  const panel = $('#usagePanel');
+  if (!panel) return;
+  try {
+    const u = await api('/api/admin/usage');
+    panel.hidden = false;
+
+    // One pair of meters per model used today. The provider counts each model
+    // separately, so a single combined bar would overstate how close you are.
+    $('#usageMeters').innerHTML = u.today.models.length
+      ? u.today.models.map((m) => `
+          <h3 class="usageModel">${escapeHtml(m.name)}</h3>
+          ${meter('Tokens', m.tokens, u.limits.tokensPerDay, 'tokens')}
+          ${meter('Messages', m.requests, u.limits.requestsPerDay, 'messages')}`).join('')
+      : `<div class="empty"><strong>Nothing used yet today</strong>Counting starts with the first message a visitor sends.</div>`;
+
+    const days = u.history.filter((d) => d.tokens || d.requests);
+    $('#usageHistory').innerHTML = days.length < 2 ? '' : `
+      <h3 class="usageModel usageHist">Last ${days.length} days, all models</h3>
+      <table class="usageDays">
+        <thead><tr><th>Day</th><th>Tokens</th><th>Messages</th></tr></thead>
+        <tbody>${days.map((d) => `
+          <tr><td>${new Date(d.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</td>
+          <td>${compact(d.tokens)}</td><td>${d.requests}</td></tr>`).join('')}</tbody>
+      </table>`;
+  } catch {
+    panel.hidden = true;   // a nicety; never block the page for it
+  }
 }
 
 async function loadLoginBrand() {

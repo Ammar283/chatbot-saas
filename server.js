@@ -12,7 +12,7 @@ import * as brevo from './lib/brevo.js';
 import { create as createBackup } from './scripts/backup.js';
 import { buildIndex, bm25, fuse, cosine, cacheLookup, cacheStore, cacheClear } from './lib/retrieve.js';
 import { chat, embed, needsSmartModel } from './lib/llm.js';
-import { buildSystemPrompt, parseReply, isContactable, isComplete, extractFromMessage, cleanLead, DEFAULT_CONFIRMATION } from './lib/prompt.js';
+import { buildSystemPrompt, parseReply, isContactable, isComplete, extractFromMessage, cleanLead, fakePhone, fakeEmail, DEFAULT_CONFIRMATION } from './lib/prompt.js';
 import { crawl, chunkText, attachEmbeddings } from './lib/ingest.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -241,6 +241,8 @@ app.post('/api/chat', async (req, res) => {
     const reply = parseReply(out.text, tenant);
 
     store.recordUsage(tenant, { inputTokens: out.inputTokens, outputTokens: out.outputTokens });
+    // Account-wide, per model — the provider's ceiling is not per workspace.
+    store.recordModelUsage(out.model, { inputTokens: out.inputTokens, outputTokens: out.outputTokens });
     health.recordSuccess(reply.grounded);
 
     // Only cache grounded, standalone answers — never anything conversational.
@@ -285,10 +287,20 @@ app.post('/api/chat', async (req, res) => {
         store.save(tenant.id);
       }
       const current = tenant.leads.find((l) => l.conversationId === convId) || {};
-      // Strip the repeated apology before appending the ask, so what is left is
-      // the question rather than three restatements of the same regret.
-      reply.answer = appendCallbackAsk(tenant, dropRepeats(reply.answer, history), current, required);
+      // Drop the repeated apology, then any ask for something already on file,
+      // then offer the callback ask — which no-ops once there is nothing left
+      // to ask for.
+      let text = stripKnownAsks(dropRepeats(reply.answer, history), current);
+      text = appendCallbackAsk(tenant, text, current, required);
+      // Everything was stripped and nothing was added: they are already on file
+      // and there is genuinely nothing to ask, so say that rather than nothing.
+      reply.answer = text.trim() || 'The team has your details and will come back to you shortly.';
     }
+
+    // They tried to give the detail and it did not pass. Tell them, rather than
+    // repeating the question as if they had said nothing.
+    const rejected = !scanned[asking] ? rejectionNote(message, asking) : null;
+    if (rejected) reply.answer = `${rejected} ${reply.answer}`.trim();
 
     // A blank reply reads as a broken bot. Fall back to something sensible.
     if (!reply.answer.trim()) {
@@ -454,20 +466,83 @@ function appendCallbackAsk(tenant, answer, lead, required) {
 // pricing details" three times in a row. The prompt asks it not to; this makes
 // sure. Any sentence the bot has already sent in this conversation is dropped,
 // keeping the last one so there is always something to reply to.
+// "I'm sorry, I don't have that detail" and "I don't have that information" are
+// the same sentence to a reader and different strings to a computer, so exact
+// matching alone lets the apology through again in fresh wording. Anything that
+// says "I cannot answer this" counts as one statement, however it is phrased.
+const CANNOT_ANSWER = /\b(do ?n'?t have|do not have|not sure|can'?t find|cannot find|do ?n'?t know|no information|not available)\b/i;
+
 function dropRepeats(answer, history) {
+  const prior = history.filter((h) => h.role === 'assistant').map((h) => String(h.content));
   const said = new Set(
-    history.filter((h) => h.role === 'assistant')
-      .flatMap((h) => String(h.content).split(/(?<=[.!?])\s+/))
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean),
+    prior.flatMap((c) => c.split(/(?<=[.!?])\s+/)).map((s) => s.trim().toLowerCase()).filter(Boolean),
   );
+  const alreadyApologised = prior.some((c) => CANNOT_ANSWER.test(c));
   if (!said.size) return answer;
 
   const parts = String(answer || '').split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
   if (parts.length < 2) return answer;
 
-  const kept = parts.filter((p, i) => i === parts.length - 1 || !said.has(p.toLowerCase()));
+  const kept = parts.filter((p, i) => {
+    if (i === parts.length - 1) return true;              // always leave something to reply to
+    if (said.has(p.toLowerCase())) return false;          // word-for-word repeat
+    return !(alreadyApologised && CANNOT_ANSWER.test(p)); // same point, new words
+  });
   return kept.join(' ').trim() || answer;
+}
+
+// When a detail is rejected, say so.
+//
+// Dropping it silently and asking the same question again is the loop that made
+// a visitor type their number three times and leave: from their side they
+// answered, and the assistant simply did not hear them.
+//
+// Only fires when the message was plainly an attempt at the thing being asked
+// for — someone who answers "do you do implants?" to "what is your number?" has
+// changed the subject, not failed a validation.
+function rejectionNote(message, asking) {
+  const text = String(message || '').trim();
+  if (!text) return null;
+
+  if (asking === 'phone') {
+    const digits = text.replace(/\D/g, '');
+    const dense = digits.length / Math.max(1, text.replace(/\s/g, '').length) > 0.6;
+    if (digits.length >= 4 && dense && fakePhone(digits)) {
+      return 'That number does not look quite right — could you check it and include the country code?';
+    }
+    return null;
+  }
+  if (asking === 'email' && text.includes('@') && fakeEmail(text.split(/\s+/).find((w) => w.includes('@')) || text)) {
+    return 'That address does not look quite right — could you give me one you actually check?';
+  }
+  return null;
+}
+
+// Remove any question asking for a detail the visitor has already given.
+//
+// The prompt forbids it, but the model slips — especially once it cannot answer
+// something, where it falls back on "could you share your..." as a reflex. To
+// the visitor that is the assistant forgetting them: they typed their number a
+// minute ago and are being asked for it again. Enforced here so it cannot
+// depend on the model's mood.
+const ASKS_FOR = {
+  name: /\b(full\s+)?name\b/i,
+  phone: /\b(phone|mobile|cell|contact\s+number|number)\b/i,
+  email: /\be-?mail\b/i,
+};
+
+function stripKnownAsks(answer, lead) {
+  const held = Object.keys(ASKS_FOR).filter((f) => String(lead[f] || '').trim());
+  if (!held.length) return answer;
+
+  const parts = String(answer || '').split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+  const kept = parts.filter((p) => !(/\?\s*$/.test(p) && held.some((f) => ASKS_FOR[f].test(p))));
+
+  if (kept.length === parts.length) return answer;
+  // May come back empty. The caller decides what to put there, because only it
+  // knows whether a callback ask is about to be appended — "the team has your
+  // details" followed by "what is your number?" is worse than either alone.
+  return kept.join(' ');
 }
 
 // Can this message be answered without knowing what was said before it?
@@ -625,6 +700,31 @@ app.delete('/api/admin/accounts/:id', requireAdmin, requireOwner, (req, res) => 
   if (req.account?.id === req.params.id) return res.status(400).json({ error: 'You cannot remove your own account.' });
   auth.deleteAccount(req.params.id);
   res.json({ ok: true });
+});
+
+// How close the account is to the provider's daily ceiling.
+//
+// The limits differ by provider and by plan, so they are configured rather than
+// assumed — wrong numbers here would be worse than none, because they would read
+// as reassurance.
+app.get('/api/admin/usage', requireAdmin, requireOwner, (req, res) => {
+  const history = store.usageHistory(7);
+  const today = history[0];
+  const limits = {
+    tokensPerDay: Number(process.env.PROVIDER_TOKENS_PER_DAY || 200000),
+    requestsPerDay: Number(process.env.PROVIDER_REQUESTS_PER_DAY || 1000),
+  };
+  // Limits are enforced per model, so headroom is per model too: a model that
+  // has not been touched today still has its whole allowance.
+  const models = Object.entries(today.models).map(([name, m]) => ({
+    name,
+    tokens: m.tokens,
+    requests: m.requests,
+    tokensPct: Math.round((m.tokens / limits.tokensPerDay) * 100),
+    requestsPct: Math.round((m.requests / limits.requestsPerDay) * 100),
+  })).sort((a, b) => b.tokens - a.tokens);
+
+  res.json({ limits, today: { ...today, models }, history });
 });
 
 app.get('/api/admin/app-settings', requireAdmin, requireOwner, (req, res) => res.json(store.loadApp()));
