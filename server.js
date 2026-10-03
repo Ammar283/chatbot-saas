@@ -224,8 +224,33 @@ app.post('/api/chat', async (req, res) => {
     // Everything known about this visitor including what they just said.
     const leadNow = { ...knownLead, ...scanned };
 
+    // Did they just hand over something unusable? The model has to know before
+    // it writes, or it reads the address straight out of their message and
+    // confirms it — leaving the visitor told off and thanked in one breath.
+    let rejected = rejectionNote(message, asking);
+    if (rejected && scanned[rejected.key]) rejected = null;   // it passed after all
+
+    // Said twice, so believe them.
+    //
+    // Every heuristic has false positives, and a visitor whose real address
+    // trips one would otherwise be told "that doesn't look right" forever. One
+    // doubtful detail in the list is a far smaller problem than a real customer
+    // stuck in a loop, so insisting wins.
+    if (rejected) {
+      const conv = tenant.conversations.find((c) => c.id === convId);
+      if (conv && conv.lastRejected === rejected.value) {
+        const forced = mergeLead(tenant, convId, { [rejected.key]: rejected.value });
+        if (forced) { store.save(tenant.id); notifyOnce(tenant, forced); }
+        leadNow[rejected.key] = rejected.value;
+        rejected = null;
+      } else if (conv) {
+        conv.lastRejected = rejected.value;
+        store.save(tenant.id);
+      }
+    }
+
     const messages = [
-      { role: 'system', content: buildSystemPrompt(tenant, results, leadNow) },
+      { role: 'system', content: buildSystemPrompt(tenant, results, leadNow, rejected) },
       // Two exchanges is enough to follow a thread. Six long turns is most of a
       // token budget spent re-reading answers the model itself just wrote.
       ...history.slice(-4).map((h) => ({ role: h.role, content: String(h.content).slice(0, 400) })),
@@ -297,10 +322,12 @@ app.post('/api/chat', async (req, res) => {
       reply.answer = text.trim() || 'The team has your details and will come back to you shortly.';
     }
 
-    // They tried to give the detail and it did not pass. Tell them, rather than
-    // repeating the question as if they had said nothing.
-    const rejected = !scanned[asking] ? rejectionNote(message, asking) : null;
-    if (rejected) reply.answer = `${rejected} ${reply.answer}`.trim();
+    // The model was told the detail was refused. If it confirmed it anyway —
+    // echoing the address back as recorded — that message is worse than useless,
+    // so replace it with the truth rather than appending to a contradiction.
+    if (rejected && reply.answer.includes(rejected.value)) {
+      reply.answer = rejected.say;
+    }
 
     // A blank reply reads as a broken bot. Fall back to something sensible.
     if (!reply.answer.trim()) {
@@ -504,16 +531,30 @@ function rejectionNote(message, asking) {
   const text = String(message || '').trim();
   if (!text) return null;
 
-  if (asking === 'phone') {
-    const digits = text.replace(/\D/g, '');
-    const dense = digits.length / Math.max(1, text.replace(/\s/g, '').length) > 0.6;
-    if (digits.length >= 4 && dense && fakePhone(digits)) {
-      return 'That number does not look quite right — could you check it and include the country code?';
+  // An "@" in the message is an attempt at an email whatever the bot last asked
+  // for. Tying this to `asking` meant the follow-up — which says "address", not
+  // "email" — was not recognised as an email question, so a visitor repeating
+  // themselves was silently ignored all over again.
+  const addr = text.split(/\s+/).find((w) => w.includes('@'));
+  if (addr) {
+    const reason = fakeEmail(addr);
+    if (reason) {
+      return { key: 'email', field: 'email address', value: addr, reason,
+        say: 'That email address does not look quite right — could you give me one you actually check?' };
     }
     return null;
   }
-  if (asking === 'email' && text.includes('@') && fakeEmail(text.split(/\s+/).find((w) => w.includes('@')) || text)) {
-    return 'That address does not look quite right — could you give me one you actually check?';
+
+  // A message that is mostly digits is an attempt at a number — as is any reply
+  // to a question that asked for one.
+  const digits = text.replace(/\D/g, '');
+  const dense = digits.length / Math.max(1, text.replace(/\s/g, '').length) > 0.6;
+  if (digits.length >= 4 && (asking === 'phone' || dense)) {
+    const reason = fakePhone(digits);
+    if (reason) {
+      return { key: 'phone', field: 'phone number', value: text, reason,
+        say: 'That phone number does not look quite right — could you check it and include the country code?' };
+    }
   }
   return null;
 }
