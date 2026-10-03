@@ -146,6 +146,18 @@
   .stat.hero { background: var(--pine); border-color: var(--pine); color: #fff; }
   .stat.hero .k, .stat.hero .n { color: rgba(255,255,255,.62); }
   .stat.hero .v { color: var(--brass); }
+  /* The sparkline sits under the figure as context, not as a chart: no axes,
+     no gridlines, no legend. One series, so the label above names it. */
+  .stat { position: relative; overflow: hidden; }
+  .spark { display: block; width: 100%; height: 26px; margin-top: 10px; margin-bottom: -2px;
+    color: color-mix(in srgb, var(--pine) 38%, transparent); }
+  .stat.hero .spark { color: color-mix(in srgb, var(--brass) 70%, transparent); }
+  /* One orchestrated arrival on first paint, then the page stays still. */
+  .stats .stat, .desk .tray { animation: rise .42s cubic-bezier(.2,.75,.3,1) backwards; }
+  .stats .stat:nth-child(2), .desk .tray:nth-child(2) { animation-delay: .05s; }
+  .stats .stat:nth-child(3), .desk .tray:nth-child(3) { animation-delay: .1s; }
+  .stats .stat:nth-child(4) { animation-delay: .15s; }
+  @keyframes rise { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
 
   /* ---- panels ---- */
   .panel { background: var(--card); border: 1px solid var(--mist); border-radius: 11px; padding: 20px; margin-bottom: 18px; }
@@ -170,6 +182,62 @@
   .row { display: flex; gap: 9px; align-items: flex-end; flex-wrap: wrap; }
 
   /* ---- signature: leads as telephone message slips ---- */
+  /* ---- the desk ----
+     Leads were already called "slips" here, and they already look like torn
+     paper. So the board is not a generic kanban: it is a desk with three trays,
+     and working a lead means moving a piece of paper from one tray to the next.
+     All of it runs on the client's own accent tokens, so a white-labelled
+     workspace still looks like theirs. */
+  .viewSwap { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--mist);
+    border-radius: 9px; background: var(--card); margin: 0 0 16px; }
+  .viewSwap button { border: 0; background: none; font: inherit; font-size: 12.5px; padding: 5px 13px;
+    border-radius: 6px; cursor: pointer; color: var(--muted); }
+  .viewSwap button.on { background: var(--pine); color: var(--onPine); font-weight: 600; }
+  .viewSwap button:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+
+  .desk { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: start; }
+  .tray { background: color-mix(in srgb, var(--mist) 42%, var(--paper));
+    border: 1px solid var(--mist); border-radius: 12px; padding: 12px 12px 14px; min-height: 220px; }
+  .trayTop { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
+  .trayTop h3 { font-size: 12.5px; font-weight: 600; margin: 0; }
+  .trayDot { width: 7px; height: 7px; border-radius: 99px; background: var(--brass); flex: none; }
+  .tray[data-stage="contacted"] .trayDot { background: var(--pine); }
+  .tray[data-stage="closed"] .trayDot { background: color-mix(in srgb, var(--pine) 55%, #fff); }
+  .trayCount { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--muted);
+    background: var(--card); border: 1px solid var(--mist); border-radius: 99px; padding: 1px 8px; }
+  .trayBody { display: grid; gap: 13px; min-height: 90px; }
+  /* Receptive, not decorative: only the trays a slip can actually land in. */
+  .tray.canTake { border-color: var(--brass); background: color-mix(in srgb, var(--brass) 9%, var(--paper)); }
+  .tray.over { border-style: dashed; border-color: var(--brass); }
+  .trayEmpty { font-size: 12px; color: var(--muted); text-align: center; padding: 22px 8px; line-height: 1.5; }
+
+  /* The one piece of motion worth spending: picking a slip up. It straightens
+     in your hand, lifts off the desk, and lands with a new tilt, because paper
+     never lands square. */
+  .slip { transition: transform .18s cubic-bezier(.2,.7,.3,1), box-shadow .18s, opacity .18s; }
+  .desk .slip { cursor: grab; }
+  .desk .slip:active { cursor: grabbing; }
+  .slip.lifted { transform: rotate(0deg) scale(1.03) !important;
+    box-shadow: 0 2px 0 rgba(0,0,0,.09), 0 22px 34px -16px rgba(0,0,0,.55); opacity: .96; }
+  .slip.landing { animation: settle .34s cubic-bezier(.2,.8,.3,1); }
+  @keyframes settle {
+    0%   { transform: translateY(-9px) rotate(0deg) scale(1.03); }
+    60%  { transform: translateY(2px) rotate(var(--tilt, -.35deg)) scale(.998); }
+    100% { transform: translateY(0) rotate(var(--tilt, -.35deg)) scale(1); }
+  }
+  .desk .slip { transform: rotate(var(--tilt, -.35deg)); }
+  /* The board is for triage, the slips view is for reading. Tighter padding and
+     a stamp that can wrap without colliding with the date. */
+  .desk .slip { padding: 14px 14px 13px; }
+  .desk .slip .stamp { gap: 8px; flex-wrap: wrap; }
+  .desk .slip dl { grid-template-columns: 46px 1fr; gap: 8px; }
+  .desk .slip .acts { margin-top: 11px; }
+  .slip .stage { display: flex; gap: 6px; margin-top: 11px; }
+  .slip .stage button { flex: 1; font: inherit; font-size: 11.5px; padding: 5px; border-radius: 6px;
+    border: 1px solid rgba(0,0,0,.18); background: rgba(255,255,255,.55); cursor: pointer; color: var(--ink); }
+  .slip .stage button:disabled { opacity: .35; cursor: default; }
+  .slip .stage button:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+
   .slips { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 15px; }
   .slip {
     background: var(--slip); border-radius: 3px; padding: 16px 17px 15px; position: relative;
@@ -339,7 +407,19 @@
     .main { padding: 18px 12px 60px; }
   }
 
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } .slip { transform: none !important; } }
+  @media (max-width: 860px) {
+    /* Three trays side by side is unusable on a phone. Stack them, and the
+       stage buttons carry the movement since dragging between stacked trays
+       means scrolling mid-drag. */
+    .desk { grid-template-columns: 1fr; }
+    .tray { min-height: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+    .slip { transform: none !important; }
+    .slip.lifted { transform: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -411,6 +491,11 @@
         <button class="btn ghost" id="exportCsv">Download as spreadsheet</button>
       </div>
       <p class="sub">Every visitor who left a contact detail. Call the new ones first.</p>
+      <div class="viewSwap" role="group" aria-label="How to show leads">
+        <button id="viewBoard" class="on" aria-pressed="true">Board</button>
+        <button id="viewCards" aria-pressed="false">All slips</button>
+      </div>
+      <div class="desk" id="board" hidden></div>
       <div class="slips" id="slips"></div>
     </section>
 
@@ -865,11 +950,13 @@ async function loadOverview(force = false) {
     $('#menuDot').textContent = o.newLeads ? `${o.newLeads} new` : '';
     // Four numbers a business owner cares about. Running costs and cache rates
     // are operator concerns — they belong on My clients, not in front of a client.
+    const tr = o.trend || {};
     $('#stats').innerHTML = `
-      ${stat('Leads captured', o.leads, `${o.newLeads} not yet contacted`, true)}
+      ${stat('Leads captured', o.leads, `${o.newLeads} not yet contacted`, true, tr.leads)}
       ${stat('Complete details', o.completeLeads ?? 0, 'name, phone and email')}
-      ${stat('Conversations', o.conversations, 'last 30 days')}
-      ${stat('Questions answered', o.messages, 'without anyone stepping in')}`;
+      ${stat('Conversations', o.conversations, 'last 30 days', false, tr.conversations)}
+      ${stat('Questions answered', o.messages, 'without anyone stepping in', false, tr.messages)}`;
+    animateCounts($('#stats'));
     $('#gaps').innerHTML = o.unanswered.length
       ? o.unanswered.map((q) => `<div class="gap"><span>${escapeHtml(q)}</span>
           <button class="gapX" data-gap="${escapeHtml(q)}" aria-label="Dismiss this question" title="Dismiss">&times;</button></div>`).join('')
@@ -895,14 +982,163 @@ async function loadOverview(force = false) {
   } catch (e) { toast(e.message); }
 }
 
-const stat = (k, v, n, hero) =>
-  `<div class="stat ${hero ? 'hero' : ''}"><div class="k">${k}</div><div class="v">${v}</div><div class="n">${n}</div></div>`;
+// A figure with a sparkline behind it answers "is this getting better?", which
+// is the question a business owner actually has. One series, one hue, no axes:
+// the shape is the whole point, and the number above it carries the value.
+function sparkline(series) {
+  if (!series || series.length < 2) return '';
+  const max = Math.max(...series, 1);
+  const w = 100, h = 26;
+  const step = w / (series.length - 1);
+  const pts = series.map((v, i) => `${(i * step).toFixed(1)},${(h - (v / max) * (h - 3) - 1.5).toFixed(1)}`);
+  const last = series[series.length - 1];
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+    <polyline points="${pts.join(' ')}" fill="none" stroke="currentColor" stroke-width="1.6"
+      stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+    ${last ? `<circle cx="${(w).toFixed(1)}" cy="${(h - (last / max) * (h - 3) - 1.5).toFixed(1)}" r="1.9" fill="currentColor" />` : ''}
+  </svg>`;
+}
+
+const stat = (k, v, n, hero, series) =>
+  `<div class="stat ${hero ? 'hero' : ''}"><div class="k">${k}</div>
+    <div class="v" data-count="${typeof v === 'number' ? v : ''}">${v}</div>
+    <div class="n">${n}</div>${sparkline(series)}</div>`;
+
+// Count up only when the figure has actually moved. Animating on every poll
+// would make a dashboard that is sitting still look permanently busy.
+const shown = new Map();
+function animateCounts(scope) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  scope.querySelectorAll('.v[data-count]').forEach((el, i) => {
+    const to = Number(el.dataset.count);
+    if (!Number.isFinite(to) || el.dataset.count === '') return;
+    const key = el.closest('.stat')?.querySelector('.k')?.textContent + ':' + tenantId;
+    const from = shown.get(key);
+    shown.set(key, to);
+    if (from === undefined || from === to || to > 9999) return;
+    const start = performance.now(), span = 520;
+    const tick = (now) => {
+      const p = Math.min(1, (now - start) / span);
+      const eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(from + (to - from) * eased);
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
 
 // ---- leads ----
+// --- the desk ----------------------------------------------------------
+// Three trays a lead moves through. Status strings already existed ("new",
+// "contacted"); "closed" is the end of the line.
+const STAGES = [
+  { id: 'new', label: 'New', empty: 'Nothing waiting. New enquiries land here the moment a visitor leaves a number.' },
+  { id: 'contacted', label: 'Called back', empty: 'Drag a slip here once you have rung them.' },
+  { id: 'closed', label: 'Booked or closed', empty: 'Finished with a lead? Drop it here to clear your desk.' },
+];
+const stageOf = (l) => (STAGES.some((s) => s.id === l.status) ? l.status : 'new');
+let boardMode = localStorage.getItem('leadsView') !== 'cards';
+
+// Paper never lands square. A tilt derived from the id keeps each slip at the
+// same angle between renders instead of jittering on every refresh.
+function tilt(id) {
+  let n = 0;
+  for (const ch of String(id)) n = (n * 31 + ch.charCodeAt(0)) % 1000;
+  return (((n / 1000) * 1.5) - 0.75).toFixed(2);
+}
+
+async function moveLead(id, stage) {
+  try {
+    await api(`/api/admin/${tenantId}/leads/${id}`, { method: 'PATCH', body: JSON.stringify({ status: stage }) });
+    const name = STAGES.find((s) => s.id === stage)?.label.toLowerCase();
+    toast(`Moved to ${name}.`);
+    await loadLeads();
+    loadOverview();
+  } catch (e) { toast(e.message); }
+}
+
+function renderBoard(leads) {
+  const board = $('#board');
+  board.innerHTML = STAGES.map((s) => {
+    const mine = leads.filter((l) => stageOf(l) === s.id);
+    return `<section class="tray" data-stage="${s.id}" aria-label="${escapeHtml(s.label)}">
+      <div class="trayTop"><span class="trayDot"></span><h3>${escapeHtml(s.label)}</h3>
+        <span class="trayCount">${mine.length}</span></div>
+      <div class="trayBody">${mine.length ? mine.map((l) => slip(l, true)).join('')
+        : `<p class="trayEmpty">${escapeHtml(s.empty)}</p>`}</div>
+    </section>`;
+  }).join('');
+
+  let dragging = null;
+
+  board.querySelectorAll('.slip').forEach((el) => {
+    el.setAttribute('draggable', 'true');
+    el.addEventListener('dragstart', (e) => {
+      dragging = el;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', el.dataset.lead);
+      // A frame later, or the browser screenshots the card mid-transform.
+      requestAnimationFrame(() => el.classList.add('lifted'));
+      board.querySelectorAll('.tray').forEach((t) => {
+        if (t.dataset.stage !== el.dataset.stage) t.classList.add('canTake');
+      });
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('lifted');
+      board.querySelectorAll('.tray').forEach((t) => t.classList.remove('canTake', 'over'));
+      dragging = null;
+    });
+    // Not everyone can drag: a trackpad, a touchscreen, or a keyboard all need
+    // a way through. Left and right arrows move a focused slip between trays.
+    el.addEventListener('keydown', (e) => {
+      const i = STAGES.findIndex((s) => s.id === el.dataset.stage);
+      const next = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : null;
+      if (next === null || next < 0 || next >= STAGES.length) return;
+      e.preventDefault();
+      moveLead(el.dataset.lead, STAGES[next].id);
+    });
+  });
+
+  board.querySelectorAll('.tray').forEach((tray) => {
+    tray.addEventListener('dragover', (e) => {
+      if (!dragging || tray.dataset.stage === dragging.dataset.stage) return;
+      e.preventDefault();                       // required, or the drop never fires
+      e.dataTransfer.dropEffect = 'move';
+      tray.classList.add('over');
+    });
+    tray.addEventListener('dragleave', () => tray.classList.remove('over'));
+    tray.addEventListener('drop', (e) => {
+      e.preventDefault();
+      tray.classList.remove('over');
+      const id = e.dataTransfer.getData('text/plain');
+      if (id && dragging && tray.dataset.stage !== dragging.dataset.stage) moveLead(id, tray.dataset.stage);
+    });
+  });
+
+  // The stage buttons do the same job for anyone not dragging.
+  board.querySelectorAll('[data-move]').forEach((b) => {
+    b.onclick = () => moveLead(b.dataset.lead, b.dataset.move);
+  });
+}
+
+function paintLeadView() {
+  $('#board').hidden = !boardMode;
+  $('#slips').hidden = boardMode;
+  $('#viewBoard').classList.toggle('on', boardMode);
+  $('#viewCards').classList.toggle('on', !boardMode);
+  $('#viewBoard').setAttribute('aria-pressed', String(boardMode));
+  $('#viewCards').setAttribute('aria-pressed', String(!boardMode));
+}
+
+$('#viewBoard').onclick = () => { boardMode = true; localStorage.setItem('leadsView', 'board'); paintLeadView(); };
+$('#viewCards').onclick = () => { boardMode = false; localStorage.setItem('leadsView', 'cards'); paintLeadView(); };
+
 async function loadLeads() {
   if (!tenantId) return;
   const leads = await api(`/api/admin/${tenantId}/leads`);
-  $('#slips').innerHTML = leads.length ? leads.map(slip).join('')
+  renderBoard(leads);
+  paintLeadView();
+  $('#slips').innerHTML = leads.length ? leads.map((l) => slip(l)).join('')
     : `<div class="empty" style="grid-column:1/-1"><strong>No leads yet</strong>They appear here the moment a visitor leaves a phone number or email.</div>`;
   document.querySelectorAll('[data-del]').forEach((b) => {
     b.onclick = async () => {
@@ -921,25 +1157,40 @@ async function loadLeads() {
   });
 }
 
-function slip(l) {
+function slip(l, onBoard = false) {
   const when = new Date(l.at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   const tel = (l.phone || '').replace(/[^\d+]/g, '');
   // A blank line reads as a bug. Say plainly that the visitor didn't give it.
   const val = (v) => v ? escapeHtml(v) : '<span class="none">not given</span>';
-  return `<article class="slip ${l.status === 'contacted' ? 'done' : ''}">
-    <div class="stamp"><span class="span-new">${l.status === 'contacted' ? 'Contacted' : 'New Lead'}</span><span>${when}</span></div>
+  const stage = stageOf(l);
+  const i = STAGES.findIndex((s) => s.id === stage);
+  // The full "New Appointment Request" badge is built for the wide slip view.
+  // In a tray column it wraps onto two lines and runs into the timestamp, so
+  // the board gets the short form.
+  const stamp = stage === 'closed' ? 'Closed'
+    : stage === 'contacted' ? 'Contacted'
+    : onBoard ? 'New' : 'New Appointment Request';
+  const board = onBoard
+    ? ` data-lead="${escapeHtml(l.id)}" data-stage="${stage}" tabindex="0" style="--tilt:${tilt(l.id)}deg"`
+    : '';
+  return `<article class="slip ${stage === 'contacted' || stage === 'closed' ? 'done' : ''}"${board}>
+    <div class="stamp"><span class="span-new">${stamp}</span><span>${when}</span></div>
     <dl>
       <dt>Name</dt><dd>${val(l.name)}</dd>
       <dt>Phone</dt><dd class="tel">${val(l.phone)}</dd>
       <dt>Email</dt><dd>${val(l.email)}</dd>
       <dt>Wants</dt><dd>${val(l.intent)}</dd>
     </dl>
-    ${l.firstQuestion ? `<p class="asked">Opened with: &ldquo;${escapeHtml(l.firstQuestion)}&rdquo;</p>` : ''}
+    ${l.firstQuestion && !onBoard ? `<p class="asked">Opened with: &ldquo;${escapeHtml(l.firstQuestion)}&rdquo;</p>` : ''}
     <div class="acts">
       ${tel ? `<a href="https://wa.me/${tel.replace(/^\+/, '')}" target="_blank" rel="noopener">WhatsApp</a><a href="tel:${tel}">Call</a>` : ''}
       ${l.email && !tel ? `<a href="mailto:${escapeHtml(l.email)}">Email</a>` : ''}
-      ${l.status === 'contacted' ? '' : `<button data-done="${l.id}">Mark contacted</button>`}
+      ${onBoard || stage !== 'new' ? '' : `<button data-done="${l.id}">Mark contacted</button>`}
     </div>
+    ${onBoard ? `<div class="stage">
+      <button data-lead="${escapeHtml(l.id)}" data-move="${STAGES[Math.max(0, i - 1)].id}" ${i === 0 ? 'disabled' : ''}>&larr; Back</button>
+      <button data-lead="${escapeHtml(l.id)}" data-move="${STAGES[Math.min(STAGES.length - 1, i + 1)].id}" ${i === STAGES.length - 1 ? 'disabled' : ''}>Move on &rarr;</button>
+    </div>` : ''}
     <button class="slipX" data-del="${l.id}" aria-label="Delete this lead" title="Delete">&times;</button>
   </article>`;
 }

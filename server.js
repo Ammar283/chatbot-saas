@@ -559,6 +559,32 @@ function rejectionNote(message, asking) {
   return null;
 }
 
+// Daily counts for the last N days, oldest first. Cheap: these arrays are
+// already in memory and a fortnight is a short loop.
+function dailyTrend(tenant, days = 14) {
+  const key = (d) => new Date(d).toISOString().slice(0, 10);
+  const buckets = [];
+  for (let i = days - 1; i >= 0; i--) buckets.push(key(Date.now() - i * 864e5));
+  const index = new Map(buckets.map((k, i) => [k, i]));
+  const blank = () => buckets.map(() => 0);
+
+  const leads = blank();
+  const conversations = blank();
+  const messages = blank();
+
+  for (const l of tenant.leads) {
+    const i = index.get(key(l.at));
+    if (i !== undefined) leads[i] += 1;
+  }
+  for (const c of tenant.conversations) {
+    const i = index.get(key(c.startedAt));
+    if (i === undefined) continue;
+    conversations[i] += 1;
+    messages[i] += (c.turns || []).length;
+  }
+  return { days: buckets, leads, conversations, messages };
+}
+
 // Remove any question asking for a detail the visitor has already given.
 //
 // The prompt forbids it, but the model slips — especially once it cannot answer
@@ -933,6 +959,9 @@ app.get('/api/admin/:tenantId/overview', requireAdmin, requireTenant, (req, res)
     estimatedCostUsd: +(((usage.inputTokens / 1e6) * Number(process.env.PRICE_IN_PER_M || 0)
       + (usage.outputTokens / 1e6) * Number(process.env.PRICE_OUT_PER_M || 0))).toFixed(4),
     completeLeads: t.leads.filter((l) => l.complete).length,
+    // Fourteen days of daily counts, so each figure can show its own shape
+    // rather than a number with no sense of whether it is rising or dying.
+    trend: dailyTrend(t, 14),
     unanswered: [...new Set(unanswered)].slice(0, 20),
   });
 });
