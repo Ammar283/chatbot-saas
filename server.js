@@ -585,6 +585,25 @@ function dailyTrend(tenant, days = 14) {
   return { days: buckets, leads, conversations, messages };
 }
 
+// What people are actually asking for, taken from the leads rather than from
+// guesswork. Near-identical phrasings are folded together, so "book cleaning"
+// and "booking a cleaning" do not occupy two rows of a five-row list.
+function topIntents(tenant, limit = 5) {
+  const counts = new Map();
+  for (const l of tenant.leads) {
+    const raw = String(l.intent || '').trim().toLowerCase();
+    if (!raw || raw.length < 3) continue;
+    const key = raw.replace(/[^a-z0-9 ]/g, '').replace(/\b(a|an|the|for|of|my|to|about)\b/g, '').replace(/\s+/g, ' ').trim();
+    if (!key) continue;
+    const hit = counts.get(key) || { label: String(l.intent).trim(), n: 0 };
+    hit.n += 1;
+    counts.set(key, hit);
+  }
+  const rows = [...counts.values()].sort((a, b) => b.n - a.n).slice(0, limit);
+  const total = rows.reduce((n, r) => n + r.n, 0) || 1;
+  return rows.map((r) => ({ label: r.label, n: r.n, pct: Math.round((r.n / total) * 100) }));
+}
+
 // Remove any question asking for a detail the visitor has already given.
 //
 // The prompt forbids it, but the model slips — especially once it cannot answer
@@ -959,9 +978,13 @@ app.get('/api/admin/:tenantId/overview', requireAdmin, requireTenant, (req, res)
     estimatedCostUsd: +(((usage.inputTokens / 1e6) * Number(process.env.PRICE_IN_PER_M || 0)
       + (usage.outputTokens / 1e6) * Number(process.env.PRICE_OUT_PER_M || 0))).toFixed(4),
     completeLeads: t.leads.filter((l) => l.complete).length,
-    // Fourteen days of daily counts, so each figure can show its own shape
-    // rather than a number with no sense of whether it is rising or dying.
+    // Daily counts, so each figure can show its own shape rather than being a
+    // number with no sense of whether it is rising or dying. The window is the
+    // client's choice; 14 keeps the sparklines comparable week to week.
     trend: dailyTrend(t, 14),
+    range: dailyTrend(t, Math.min(90, Math.max(7, Number(req.query.days) || 30))),
+    // What visitors actually came for, counted from the leads themselves.
+    intents: topIntents(t, 5),
     unanswered: [...new Set(unanswered)].slice(0, 20),
   });
 });
