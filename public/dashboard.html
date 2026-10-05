@@ -1425,10 +1425,15 @@ function searchTerm() { return searchQ; }
 // Empties the box without repainting — callers that need a repaint do it
 // themselves, and syncTopbar is about to repaint the whole section anyway.
 function clearSearch() {
+  const had = Boolean(searchQ);
   searchQ = '';
   const box = $('#q');
   if (box) box.value = '';
   $('#clearQ').hidden = true;
+  // A list left filtered would stay filtered: the skip-if-unchanged checks
+  // only look at the data, and the data did not change — the filter did. So
+  // clearing a live term invalidates them, which costs exactly one repaint.
+  if (had) { leadSig = ''; convSig = ''; kbSig = ''; }
 }
 
 // A password manager fills in after the page settles, so one look a moment
@@ -1495,7 +1500,9 @@ $('#tenant').addEventListener('change', () => {
   // A different workspace means different everything. Drop the caches, or the
   // section on screen keeps showing the previous client's data until the poll
   // comes round — which, on Conversations, is somebody else's transcripts.
-  convCache = []; convSig = ''; openConvId = null; leadCache = []; kbCache = [];
+  convCache = []; convSig = ''; openConvId = null;
+  leadCache = []; leadSig = ''; kbCache = []; kbSig = '';
+  lastStatSig = ''; lastGapSig = ''; lastTrendSig = '';
   loadOverview(true);   // different workspace — the form must repopulate
   const v = activeView()?.id.replace('v-', '');
   if (v === 'leads') loadLeads();
@@ -1564,6 +1571,9 @@ $('#wsCreate').onclick = async () => {
 };
 
 // ---- overview ----
+let lastStatSig = '';
+let lastGapSig = '';
+
 async function loadOverview(force = false) {
   if (!tenantId) return;
   try {
@@ -1581,17 +1591,30 @@ async function loadOverview(force = false) {
     // How much the bot handled on its own: everything it answered, less the
     // questions it had to pass on.
     const autoPct = o.messages ? Math.max(0, Math.round(((o.messages - o.unanswered.length) / o.messages) * 100)) : 0;
-    $('#stats').innerHTML = `
+    const statsHtml = `
       ${stat('Leads captured', o.leads, `${o.newLeads} not yet contacted`, true, tr.leads, 'leads')}
       ${stat('Complete details', o.completeLeads ?? 0, 'name, phone and email', false, null, 'details')}
       ${stat('Conversations', o.conversations, 'last 30 days', false, tr.conversations, 'chats')}
       ${stat('Questions answered', o.messages, 'without anyone stepping in', false, tr.messages, 'answered', o.messages ? ring(autoPct) : '')}`;
-    animateCounts($('#stats'));
+    // Same story as the lists: the poll rebuilt these four cards every twenty
+    // seconds, so they slid in and counted up again on their own while someone
+    // was reading them. Rebuilt only when a figure has actually moved.
+    const statSig = [o.leads, o.newLeads, o.completeLeads, o.conversations, o.messages,
+      autoPct, tr.leads, tr.conversations, tr.messages].join('|');
+    if (statSig !== lastStatSig) {
+      lastStatSig = statSig;
+      $('#stats').innerHTML = statsHtml;
+      animateCounts($('#stats'));
+    }
     loadTrend();
-    $('#gaps').innerHTML = o.unanswered.length
-      ? o.unanswered.map((q) => `<div class="gap"><span>${escapeHtml(q)}</span>
-          <button class="gapX" data-gap="${escapeHtml(q)}" aria-label="Dismiss this question" title="Dismiss">&times;</button></div>`).join('')
-      : `<div class="empty"><strong>Nothing missed yet</strong>The bot found an answer for every question it received.</div>`;
+    const gapSig = o.unanswered.join('\u0001');
+    if (gapSig !== lastGapSig) {
+      lastGapSig = gapSig;
+      $('#gaps').innerHTML = o.unanswered.length
+        ? o.unanswered.map((q) => `<div class="gap"><span>${escapeHtml(q)}</span>
+            <button class="gapX" data-gap="${escapeHtml(q)}" aria-label="Dismiss this question" title="Dismiss">&times;</button></div>`).join('')
+        : `<div class="empty"><strong>Nothing missed yet</strong>The bot found an answer for every question it received.</div>`;
+    }
     $('#suspendBar').hidden = !o.suspended;
     $('#suspendMsg').textContent = o.suspendedMessage || '';
     // The rail footer reports the bot, not the dashboard: a client looking for
@@ -1805,11 +1828,27 @@ $('#viewBoard').onclick = () => { boardMode = true; localStorage.setItem('leadsV
 $('#viewCards').onclick = () => { boardMode = false; localStorage.setItem('leadsView', 'cards'); paintLeadView(); };
 
 let leadCache = [];
+let leadSig = '';
 
 async function loadLeads() {
   if (!tenantId) return;
-  leadCache = await api(`/api/admin/${tenantId}/leads`);
+  const fresh = await api(`/api/admin/${tenantId}/leads`);
+  // Returning to this tab, or the 20-second poll, used to rebuild the board
+  // whether or not anything had changed. Because the old content is already on
+  // screen when the view opens, the rebuild arriving half a second later read
+  // as the page loading a second time — slips flashing and the trays sliding
+  // in again. Nothing is touched unless the data actually moved.
+  const sig = leadFingerprint(fresh);
+  if (sig === leadSig && leadCache.length) return;
+  leadSig = sig;
+  leadCache = fresh;
   paintLeads();
+}
+
+// Everything a slip draws from. A lead moving stage or a note being edited has
+// to count as a change, or the board would stop reflecting it.
+function leadFingerprint(rows) {
+  return rows.map((l) => [l.id, l.status, l.name, l.phone, l.email, l.note, l.intent].join('\u0001')).join('\u0002');
 }
 
 // Split out from the fetch so the search box can repaint from the cache
@@ -1907,8 +1946,11 @@ function convResolved(c) {
 const onePane = () => matchMedia('(max-width: 980px)').matches;
 
 function enterConvs() {
-  if (onePane()) openConvId = null;
-  convSig = '';          // arriving here always repaints, poll or no poll
+  // Only the selection is reset, and only when it would strand the visitor on
+  // a transcript with no list. Forcing a full repaint here was what made the
+  // section appear to load twice: the cached list was already on screen, then
+  // the fetch came back and rebuilt all of it.
+  if (onePane() && openConvId) { openConvId = null; paintConvList(); paintConvPane(null); }
   loadConvs();
 }
 
@@ -2061,10 +2103,15 @@ $('#convs').addEventListener('keydown', (e) => {
 
 // ---- knowledge ----
 let kbCache = [];
+let kbSig = '';
 
 async function loadKb() {
   if (!tenantId) return;
-  kbCache = await api(`/api/admin/${tenantId}/knowledge`);
+  const fresh = await api(`/api/admin/${tenantId}/knowledge`);
+  const sig = fresh.length + '|' + fresh.map((c) => c.title + c.preview).join('\u0001').length;
+  if (sig === kbSig && kbCache.length) return;
+  kbSig = sig;
+  kbCache = fresh;
   paintKb();
 }
 
@@ -2777,13 +2824,24 @@ function wireChart(range) {
   });
 }
 
+let lastTrendSig = '';
+
 async function loadTrend() {
   if (!tenantId) return;
   try {
     const o = await api(`/api/admin/${tenantId}/overview?days=${rangeDays}`);
     $('#trendPanel').hidden = false;
-    $('#trendChart').innerHTML = trendChart(o.range);
-    wireChart(o.range);
+    // The chart draws itself in on every render, which is right when you open
+    // the page or switch range and wrong every twenty seconds after that. The
+    // style and range are part of the signature so changing either still
+    // redraws, and so does a day's figures moving.
+    const sig = [chartStyle, rangeDays, (o.range?.days || []).join(','),
+      (o.range?.conversations || []).join(','), (o.range?.leads || []).join(',')].join('|');
+    if (sig !== lastTrendSig) {
+      lastTrendSig = sig;
+      $('#trendChart').innerHTML = trendChart(o.range);
+      wireChart(o.range);
+    }
     $$('.ranges button[data-days]').forEach((b) => b.classList.toggle('on', Number(b.dataset.days) === rangeDays));
     $$('.ranges button[data-style]').forEach((b) => {
       b.classList.toggle('on', b.dataset.style === chartStyle);

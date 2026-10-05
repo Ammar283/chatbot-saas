@@ -141,14 +141,6 @@
         /* contain, not cover: a logo must never be cropped by the circle. */
         .launcher img { width: 34px; height: 34px; object-fit: contain; display: block; pointer-events: none; }
         .launcher svg { display: block; pointer-events: none; }
-        /* The mark is the mask; currentColor is the paint, so it tracks the
-           chat text colour exactly as the header and the bubbles do. */
-        .lMark {
-          width: 30px; height: 30px; display: block; pointer-events: none;
-          background-color: currentColor;
-          -webkit-mask: url("${MARK_URL}") center / contain no-repeat;
-                  mask: url("${MARK_URL}") center / contain no-repeat;
-        }
         .launcher:focus-visible { outline: 3px solid ${ON}; outline-offset: 3px; }
         .badge {
           position: absolute; top: -2px; right: -2px; min-width: 20px; height: 20px;
@@ -274,7 +266,7 @@
         <button class="launcher" aria-label="${open ? 'Close' : 'Open'} chat" aria-expanded="${open}">
           ${open ? CLOSE_ICON
             : LAUNCHER_ICON ? `<img class="lIcon" src="${esc(LAUNCHER_ICON)}" alt="" />`
-            : (MASK_OK && markReady) ? BRAND_MARK : CHAT_ICON}
+            : BRAND_MARK}
           ${unread && !open ? `<span class="badge">${unread}</span>` : ''}
         </button>
       </div>`;
@@ -294,30 +286,16 @@
     paint();
   }
 
-  // The aiFrontBot mark, drawn as a CSS mask rather than an <img>.
+  // The aiFrontBot mark, inline, as a vector path on currentColor.
   //
-  // The first version of this was the full-colour logo PNG, whose blue was
-  // baked into the pixels: on a lime launcher it sat there blue and no CSS
-  // could reach it. The mark is a plain silhouette, so its alpha channel is
-  // used as a mask and the shape is painted in currentColor — it keeps the
-  // brand shape AND follows the chat text colour, instead of having to choose
-  // between the two. Served from this server, so it never depends on the
-  // marketing site staying up.
-  const MARK_URL = `${API}/launcher-mark.png`;
-  const BRAND_MARK = `<span class="lMark" aria-hidden="true"></span>`;
-  // Masks are everywhere now, but if they are not supported the shape would
-  // paint as a solid block, so that case falls back to the line icon.
-  const MASK_OK = typeof CSS !== 'undefined' && CSS.supports
-    && (CSS.supports('mask-image', 'url(a)') || CSS.supports('-webkit-mask-image', 'url(a)'));
-  // And a mask whose image never arrives paints nothing at all, which would
-  // leave the client with an empty circle on their site. So the mark is only
-  // used once the file has actually loaded; until then, and for good if it
-  // never does, the line icon stands in. A <img> can't do this job — it would
-  // show the shape in its own colour, which is the bug this replaced.
-  let markReady = false;
-  const markLoader = new Image();
-  markLoader.onload = () => { markReady = true; render(); };
-  markLoader.src = MARK_URL;
+  // It went through two wrong shapes first. As the full-colour logo PNG its
+  // blue was baked into the pixels, so it sat there blue on a lime launcher
+  // and no CSS could reach it. As a separate file used for a CSS mask it was
+  // right in principle but needed a second file deployed beside this one, and
+  // a 404 on that file left every client with the plain line icon. Inline, it
+  // ships with this script: one file, no request, no fallback to get wrong,
+  // and it takes the chat text colour exactly as the header and bubbles do.
+  const BRAND_MARK = '<svg class="lIcon" width="29" height="29" viewBox="0 0 100 100" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M40.7 0.2C40.5 0.3 39.8 0.5 39.1 0.6C36.1 1.3 33.3 2.5 30.4 4.2C29.5 4.8 26.4 7.1 25.4 8.1C22.9 10.3 19.9 13.6 17.9 16.3C15.5 19.9 14.3 21.7 12.9 24.3C12.3 25.4 10.7 28.6 10.3 29.5C9.6 31.1 9.3 32 9.2 32.4C9.1 32.7 8.9 33.1 8.8 33.4C7.9 35.8 7.3 37.8 6.7 40.1C6 43.5 5.8 45.2 5.8 49.4C5.8 54.3 6.1 57.1 7 60.3C8 63.9 9 66.2 10.8 69.3C12.9 72.7 15.1 75.4 18.2 78.1C20.6 80 21.6 80.7 24.7 82.3C26.8 83.4 31.8 85.1 33.1 85.1C33.3 85.1 33.7 85.1 34.1 85.2C35.5 85.6 37.4 85.6 51.9 85.6C63.9 85.7 66.3 85.7 66.5 85.8C66.6 85.9 67 86.3 67.4 86.8C67.8 87.2 68.3 87.7 68.6 87.9C68.9 88.3 70.5 89.8 73.3 92.4C73.8 92.9 74.7 93.7 75.2 94.1C75.7 94.6 76.3 95.1 76.5 95.3C76.8 95.6 77.8 96.6 78.8 97.5C79.8 98.4 80.7 99.3 80.7 99.4C80.8 99.5 81 99.6 81.4 99.6C82.3 99.6 82.3 100 82.2 91.7C82.2 84.2 82.2 84 82.7 81.8C83.1 80 84.2 76.8 85.2 75.1C86.1 73.4 86.4 72.9 86.8 72.2C87.3 71.5 88.5 69.5 89.1 68.6C90.1 66.9 91.5 63.8 91.9 62.7C92.1 62.2 92.2 61.7 92.3 61.6C92.5 61.3 93.4 57.9 93.5 57.2C93.5 56.9 93.6 56.6 93.7 56.4C93.8 56.1 93.9 54.9 94.1 53.2C94.2 51.8 94.2 46.9 94.1 45.8C93.8 42.8 93.3 40.6 92.7 38.8C92.1 37.1 91.8 36.1 91.7 35.8C91.4 35.1 90.2 32.7 89.8 32.1C89.7 31.8 89.5 31.5 89.5 31.5C89.5 31.3 88.1 29.3 87.1 28.1C84.1 24.4 80.3 21.4 76.1 19.6C73 18.2 72.2 18 69.7 17.5C65.9 16.7 64.8 16.6 57.1 16.6C53.2 16.6 50.6 16.6 50.5 16.5C50 16.3 50.1 15.9 50.8 14.7C51.9 12.8 52.3 11.3 52.3 9.6C52.3 7 51.3 4.8 49.5 3C48.2 1.7 46.4 0.7 44.6 0.4C44.3 0.4 44.1 0.3 44 0.2C43.8 0 41.1 0 40.7 0.2ZM64.7 30.6C67.7 31.3 70.4 32.6 72.2 34.1C75.2 36.5 77 39 78.2 42.4C79 44.7 79.2 45.4 79.3 48.4C79.5 50.7 79.3 52.3 78.9 54.1C78.7 54.7 78.5 55.5 78.4 55.8C77.9 58 75.8 61.4 73.8 63.4C71 66.2 67.9 67.8 63.9 68.5C62.7 68.8 62.4 68.8 50.7 68.8C40.1 68.8 38.6 68.8 37.4 68.7C35.7 68.4 34.7 68.2 33 67.6C32.3 67.3 30.1 66.3 29.4 65.8C27.2 64.3 24.9 61.9 23.6 59.6C23.2 58.8 22 56.4 22 56.3C22 56.2 21.9 56 21.9 55.8C21.6 55.4 21.2 53.1 21 51.4C20.7 48.6 21.2 44.6 22.3 42C23.5 38.9 25.1 36.7 27.7 34.5C29.1 33.3 30.5 32.5 33.2 31.5C34.2 31.1 36.3 30.5 37.7 30.3C37.8 30.3 43.8 30.3 50.8 30.3L63.7 30.3L64.7 30.6Z"/></svg>';
   const CHAT_ICON = '<svg class="lIcon" width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 21 11.5z"/></svg>';
   const LAUNCHER_ICON = script?.dataset.icon || '';
   const CLOSE_ICON = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
