@@ -22,6 +22,12 @@
     --body: "Inter", ui-sans-serif, system-ui, sans-serif;
     --onBrass: #1A1206;
     --onPine: #FFFFFF;
+    /* Chart series. --c1 leads in the client's highlight colour, --c2 follows
+       in their dashboard colour. Declared on :root so applyBranding can
+       override them with an inline value; a rule on .chartPanel would win
+       against an inherited one and the chart would never repaint. */
+    --c1: var(--brass);
+    --c2: var(--pine);
     --mono: "IBM Plex Mono", ui-monospace, monospace;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -144,7 +150,7 @@
   /* A translucent white stays readable whatever the rail colour is set to. */
   .nav .count { color: #fff; background: rgba(255,255,255,.16); font-family: var(--mono); font-size: 11px;
                 opacity: .95; padding: 3px 8px; border-radius: 3px; }
-  .main { padding: 30px 34px 60px; max-width: 1334px; }
+  .main { padding: 30px 34px 60px; max-width: 1480px; }
 
   h1 { font-family: var(--display); font-size: 27px; font-weight: 700; letter-spacing: -.025em; }
   .sub { color: var(--muted); margin-top: 3px; margin-bottom: 24px; }
@@ -205,28 +211,62 @@
   .ranges button.on { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.07); }
   .ranges button:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
 
-  .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin: 14px 0 6px; }
+  /* The two series run on the client's own tokens: the highlight colour leads,
+     the dashboard colour follows. Set them once here and every mark, dot,
+     legend chip and tooltip swatch follows whatever the client picks in
+     Settings — nothing in the chart is a fixed colour. */
+  .legend { display: flex; justify-content: flex-end; gap: 18px; flex-wrap: wrap;
+    font-size: 12.5px; color: var(--muted); margin: 2px 0 2px; }
   .legend b { color: var(--ink); font-family: var(--mono); font-weight: 500; margin-left: 3px; }
   .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 7px; vertical-align: -1px; }
   .sw.a { background: var(--pine); }
   .sw.b { background: color-mix(in srgb, var(--pine) 62%, var(--paper)); }
   .sw.gap { background: var(--mist); border: 1px solid color-mix(in srgb, var(--ink) 18%, var(--mist)); }
+  .sw.s1 { background: var(--c1); border-radius: 99px; width: 10px; height: 10px; }
+  .sw.s2 { background: var(--c2); border-radius: 99px; width: 10px; height: 10px; }
 
   .chartWrap { position: relative; }
   .chart { width: 100%; height: auto; display: block; overflow: visible; }
   .chart .grid { stroke: var(--mist); stroke-width: 1; }
+  .chart .base { stroke: color-mix(in srgb, var(--ink) 22%, var(--mist)); stroke-width: 1; }
   .chart .axis { font-family: var(--mono); font-size: 9.5px; fill: var(--muted); }
-  .chart .areaA { fill: color-mix(in srgb, var(--pine) 9%, transparent); }
-  .chart .lineA { fill: none; stroke: var(--pine); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round;
-    vector-effect: non-scaling-stroke; }
-  .chart .lineB { fill: none; stroke: color-mix(in srgb, var(--pine) 62%, var(--paper)); stroke-width: 2;
-    stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-  .chart .markB { fill: color-mix(in srgb, var(--pine) 62%, var(--paper)); }
+  /* stop-color set in CSS rather than on the element so the gradient tracks
+     --c1 live when a client changes their highlight colour. */
+  .chart .g1a { stop-color: var(--c1); stop-opacity: .34; }
+  .chart .g1b { stop-color: var(--c1); stop-opacity: .02; }
+  .chart .areaA { fill: url(#trendFill); }
+  /* No vector-effect here on purpose: the draw-on animation measures the path
+     with getTotalLength(), which is in viewBox units. A non-scaling stroke
+     would dash in screen pixels instead and the line would finish early. */
+  .chart .lineA { fill: none; stroke: var(--c1); stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
+  .chart .lineB { fill: none; stroke: var(--c2); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .chart .nodeA { fill: var(--c1); stroke: var(--card); stroke-width: 2; }
+  .chart .nodeB { fill: var(--c2); stroke: var(--card); stroke-width: 2; }
+  .chart .barA { fill: var(--c1); }
+  .chart .barB { fill: var(--c2); }
   .chart .cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; opacity: .5; }
-  .chart .dotA { fill: var(--pine); stroke: var(--card); stroke-width: 2; }
-  .chart .dotB { fill: color-mix(in srgb, var(--pine) 48%, var(--paper)); stroke: var(--card); stroke-width: 2; }
+  .chart .dotA { fill: var(--c1); stroke: var(--card); stroke-width: 2; }
+  .chart .dotB { fill: var(--c2); stroke: var(--card); stroke-width: 2; }
   .chart .hit:focus-visible { outline: none; }
   .chart .hit:focus-visible ~ .hoverLayer .cross { opacity: 1; }
+  /* The line and the area arrive together, left to right, once per redraw. */
+  @media (prefers-reduced-motion: no-preference) {
+    .chart .lineA, .chart .lineB { stroke-dasharray: var(--len, 2000); stroke-dashoffset: var(--len, 2000);
+      animation: draw .85s cubic-bezier(.3,.8,.35,1) forwards; }
+    .chart .lineB { animation-delay: .1s; }
+    .chart .areaA { opacity: 0; animation: fadeIn .6s ease .35s forwards; }
+    .chart .nodeA, .chart .nodeB { opacity: 0; animation: fadeIn .4s ease .6s forwards; }
+    .chart .barA, .chart .barB { transform-box: fill-box; transform-origin: 50% 100%;
+      animation: growUp .5s cubic-bezier(.2,.8,.3,1) backwards; }
+  }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes fadeIn { to { opacity: 1; } }
+  @keyframes growUp { from { transform: scaleY(0); } }
+
+  /* Style switch — three ways to read the same numbers. */
+  .chartTools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .ranges.styles button { padding: 5px 8px; display: inline-flex; }
+  .ranges.styles svg { width: 15px; height: 15px; display: block; }
   .tip { position: absolute; top: 4px; background: var(--ink); color: #fff; font-size: 12px; line-height: 1.5;
     padding: 8px 11px; border-radius: 8px; pointer-events: none; white-space: nowrap; z-index: 2;
     box-shadow: 0 8px 20px -10px rgba(0,0,0,.6); }
@@ -637,10 +677,28 @@
             <h2>How the bot is doing</h2>
             <p class="sub">Conversations it handled, and the ones that left contact details.</p>
           </div>
-          <div class="ranges" role="group" aria-label="Time range">
-            <button data-days="7">7 days</button>
-            <button data-days="30" class="on">30 days</button>
-            <button data-days="90">90 days</button>
+          <div class="chartTools">
+            <div class="ranges styles" role="group" aria-label="Chart style">
+              <button data-style="curve" title="Smooth curve" aria-label="Smooth curve">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                  <path d="M1.5 11.5c2.5 0 3-6 5.5-6s3 6 5.5 6 2-3.5 2-3.5"/></svg>
+              </button>
+              <button data-style="line" title="Straight lines" aria-label="Straight lines">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"
+                     stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1.5 11.5 5.5 6.5 9 9.5 14.5 3.5"/></svg>
+              </button>
+              <button data-style="bars" title="Bars" aria-label="Bars">
+                <svg viewBox="0 0 16 16" fill="currentColor">
+                  <rect x="1.5" y="8" width="3" height="6" rx="1"/><rect x="6.5" y="4" width="3" height="10" rx="1"/>
+                  <rect x="11.5" y="6.5" width="3" height="7.5" rx="1"/></svg>
+              </button>
+            </div>
+            <div class="ranges" role="group" aria-label="Time range">
+              <button data-days="7">7 days</button>
+              <button data-days="30" class="on">30 days</button>
+              <button data-days="90">90 days</button>
+            </div>
           </div>
         </div>
         <div id="trendChart"></div>
@@ -994,6 +1052,7 @@
 
 <script>
 const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
 const API = location.origin;
 let tenantId = null, overview = null;
 
@@ -1611,6 +1670,7 @@ function applyBranding(s) {
   if (/^#[0-9a-f]{3,8}$/i.test(highlight)) {
     document.documentElement.style.setProperty('--brass', highlight);
     document.documentElement.style.setProperty('--onBrass', readableOn(highlight));
+    document.documentElement.style.setProperty('--c1', chartHue(highlight));
   }
 
   // Remember it, so the next page load paints the client's brand immediately
@@ -1625,6 +1685,21 @@ function applyBranding(s) {
 
 // Dark text on a light colour, light text on a dark one, so a client cannot
 // pick a highlight that makes the selected menu item unreadable.
+// The chart draws its lead series in the client's highlight colour, so a
+// near-white highlight would draw an invisible line on a white card. This only
+// steps in for the pathological end of the range — a bright lime or gold is
+// left exactly as the client set it.
+function chartHue(hex) {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h.slice(0, 6);
+  let rgb = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+  if (rgb.some(Number.isNaN)) return hex;
+  const lum = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+  const L = () => 0.2126 * lum(rgb[0]) + 0.7152 * lum(rgb[1]) + 0.0722 * lum(rgb[2]);
+  for (let i = 0; i < 8 && L() > 0.8; i++) rgb = rgb.map((c) => Math.round(c * 0.86));
+  return '#' + rgb.map((c) => Math.max(0, Math.min(255, c)).toString(16).padStart(2, '0')).join('');
+}
+
 function readableOn(hex) {
   const h = hex.replace('#', '');
   const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h.slice(0, 6);
@@ -1648,6 +1723,7 @@ function applyBrandVars(b) {
   if (/^#[0-9a-f]{3,8}$/i.test(b.dashboardHighlight || '')) {
     document.documentElement.style.setProperty('--brass', b.dashboardHighlight);
     document.documentElement.style.setProperty('--onBrass', readableOn(b.dashboardHighlight));
+    document.documentElement.style.setProperty('--c1', chartHue(b.dashboardHighlight));
   }
 }
 
@@ -1858,47 +1934,114 @@ function meter(label, used, limit, unit) {
 // lightness difference stays distinguishable under any accent and for anyone
 // colourblind. The legend names both, so identity never rests on colour alone.
 let rangeDays = Number(localStorage.getItem('trendDays')) || 30;
+let chartStyle = localStorage.getItem('trendStyle') || 'curve';
+
+// Round numbers on the axis, and the top gridline is the ceiling rather than
+// the tallest point — a line that touches the lid is hard to read.
+function niceScale(max) {
+  const raw = Math.max(max, 1) / 4;
+  const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = Math.max(1, Math.round(([1, 2, 2.5, 5, 10].find((m) => m * pow >= raw) || 10) * pow));
+  const top = Math.max(step, Math.ceil(max / step) * step);
+  const ticks = [];
+  for (let v = 0; v <= top + 1e-9; v += step) ticks.push(Math.round(v));
+  return { ticks, top };
+}
+
+// Monotone cubic interpolation: curved, but it never overshoots a point, so a
+// quiet day can't be drawn as a dip below zero the way a plain spline would.
+function curvePath(xs, ys) {
+  const n = xs.length;
+  if (n < 2) return '';
+  const dx = [], ms = [];
+  for (let i = 0; i < n - 1; i++) { dx[i] = xs[i + 1] - xs[i]; ms[i] = (ys[i + 1] - ys[i]) / dx[i]; }
+  const m = [ms[0]];
+  for (let i = 1; i < n - 1; i++) {
+    if (ms[i - 1] * ms[i] <= 0) m[i] = 0;
+    else {
+      const w1 = 2 * dx[i] + dx[i - 1], w2 = dx[i] + 2 * dx[i - 1];
+      m[i] = (w1 + w2) / (w1 / ms[i - 1] + w2 / ms[i]);
+    }
+  }
+  m[n - 1] = ms[n - 2];
+  let d = `M${xs[0].toFixed(1)} ${ys[0].toFixed(1)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const h = dx[i] / 3;
+    d += ` C${(xs[i] + h).toFixed(1)} ${(ys[i] + m[i] * h).toFixed(1)},`
+      + ` ${(xs[i + 1] - h).toFixed(1)} ${(ys[i + 1] - m[i + 1] * h).toFixed(1)},`
+      + ` ${xs[i + 1].toFixed(1)} ${ys[i + 1].toFixed(1)}`;
+  }
+  return d;
+}
+
+// One source of geometry, used by both the drawing and the hover wiring. They
+// used to each carry their own copy of the constants, which is a silent way to
+// get a tooltip that points at the wrong place.
+function chartGeom(range) {
+  const days = range.days, A = range.conversations, B = range.leads;
+  const { ticks, top } = niceScale(Math.max(...A, ...B, 1));
+  const W = 1000, H = 186, PAD_L = 34, PAD_R = 10, PAD_T = 14, PAD_B = 28;
+  const n = days.length, inner = W - PAD_L - PAD_R, slot = inner / n;
+  // Bars sit in the middle of their day; a line starts and ends at the edges.
+  const x = chartStyle === 'bars'
+    ? (i) => PAD_L + slot * (i + 0.5)
+    : (i) => PAD_L + (n < 2 ? inner / 2 : (i * inner) / (n - 1));
+  const y = (v) => PAD_T + (1 - v / top) * (H - PAD_T - PAD_B);
+  return { days, A, B, ticks, top, W, H, PAD_L, PAD_R, PAD_T, PAD_B, n, inner, slot, x, y };
+}
 
 function trendChart(range) {
-  const days = range?.days || [];
-  if (days.length < 2) return '<p class="trayEmpty">Not enough traffic yet to show a trend.</p>';
-  const A = range.conversations, B = range.leads;
-  const max = Math.max(...A, ...B, 1);
-  const W = 760, H = 210, PAD_L = 30, PAD_B = 26, PAD_T = 10;
-  const x = (i) => PAD_L + (i * (W - PAD_L - 8)) / (days.length - 1);
-  const y = (v) => PAD_T + (1 - v / max) * (H - PAD_T - PAD_B);
-  const path = (s) => s.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
-  const area = `${path(A)} L${x(days.length - 1).toFixed(1)} ${y(0).toFixed(1)} L${x(0).toFixed(1)} ${y(0).toFixed(1)} Z`;
+  if (!range?.days || range.days.length < 2) return '<p class="trayEmpty">Not enough traffic yet to show a trend.</p>';
+  const g = chartGeom(range);
+  const { days, A, B, W, H, PAD_L, PAD_R, PAD_T, PAD_B, n, slot, x, y } = g;
+  const xs = days.map((_, i) => x(i));
+  const pathA = chartStyle === 'curve' ? curvePath(xs, A.map(y)) : xs.map((px, i) => `${i ? 'L' : 'M'}${px.toFixed(1)} ${y(A[i]).toFixed(1)}`).join(' ');
+  const pathB = chartStyle === 'curve' ? curvePath(xs, B.map(y)) : xs.map((px, i) => `${i ? 'L' : 'M'}${px.toFixed(1)} ${y(B[i]).toFixed(1)}`).join(' ');
+  const base = y(0);
+  const area = `${pathA} L${xs[n - 1].toFixed(1)} ${base.toFixed(1)} L${xs[0].toFixed(1)} ${base.toFixed(1)} Z`;
 
-  // Four gridlines is enough to read a value off; more is noise.
-  const ticks = [0, 0.5, 1].map((f) => Math.round(max * f)).filter((v, i, a) => a.indexOf(v) === i);
+  const every = Math.max(1, Math.round(n / 6));
+  const marked = (i) => i % every === 0 || i === n - 1;
   const label = (i) => new Date(days[i] + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-  const every = Math.max(1, Math.round(days.length / 6));
+
+  const barW = Math.max(1.5, Math.min(14, slot * 0.34));
+  const bar = (v, i, cls, off) => {
+    const h = Math.max(0, base - y(v));
+    return h < 0.5 ? '' : `<rect class="${cls}" x="${(x(i) + off - barW / 2).toFixed(1)}" y="${y(v).toFixed(1)}"
+      width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(2.5, barW / 2).toFixed(1)}"
+      style="animation-delay:${(i * 14)}ms"/>`;
+  };
+
+  const plot = chartStyle === 'bars'
+    ? days.map((_, i) => bar(A[i], i, 'barA', -barW / 2 - 0.8) + bar(B[i], i, 'barB', barW / 2 + 0.8)).join('')
+    : `<path class="areaA" d="${area}"/>
+       <path class="lineA" d="${pathA}"/>
+       <path class="lineB" d="${pathB}"/>
+       ${days.map((_, i) => marked(i)
+         ? `<circle class="nodeA" cx="${xs[i].toFixed(1)}" cy="${y(A[i]).toFixed(1)}" r="3.4"/>
+            <circle class="nodeB" cx="${xs[i].toFixed(1)}" cy="${y(B[i]).toFixed(1)}" r="3.4"/>` : '').join('')}`;
 
   return `
   <div class="legend">
-    <span><i class="sw a"></i>Conversations <b>${A.reduce((n, v) => n + v, 0)}</b></span>
-    <span><i class="sw b"></i>Leads captured <b>${B.reduce((n, v) => n + v, 0)}</b></span>
+    <span><i class="sw s1"></i>Conversations <b>${A.reduce((s, v) => s + v, 0)}</b></span>
+    <span><i class="sw s2"></i>Leads captured <b>${B.reduce((s, v) => s + v, 0)}</b></span>
   </div>
-  <div class="chartWrap">
-    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Conversations and leads over the last ${days.length} days">
-      ${ticks.map((t) => `<g><line class="grid" x1="${PAD_L}" x2="${W - 8}" y1="${y(t)}" y2="${y(t)}"/>
-         <text class="axis" x="${PAD_L - 7}" y="${(y(t) + 3.5).toFixed(1)}" text-anchor="end">${t}</text></g>`).join('')}
-      <path class="areaA" d="${area}"/>
-      <path class="lineA" d="${path(A)}"/>
-      <path class="lineB" d="${path(B)}"/>
-      ${/* One axis is the honest choice — both series are counts — but a small
-            series next to a large one flattens onto the baseline. Markers give
-            it a readable presence without inventing a second scale. */''}
-      ${B.map((v, i) => `<circle class="markB" cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.4"/>`).join('')}
-      ${days.map((_, i) => i % every === 0 || i === days.length - 1
-        ? `<text class="axis" x="${x(i).toFixed(1)}" y="${H - 7}" text-anchor="middle">${label(i)}</text>` : '').join('')}
+  <div class="chartWrap" data-style="${chartStyle}">
+    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img"
+         aria-label="Conversations and leads over the last ${n} days, drawn as ${chartStyle === 'bars' ? 'bars' : 'lines'}">
+      <defs><linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+        <stop class="g1a" offset="0"/><stop class="g1b" offset="1"/></linearGradient></defs>
+      ${g.ticks.map((t) => `<g><line class="${t ? 'grid' : 'base'}" x1="${PAD_L}" x2="${W - PAD_R}" y1="${y(t)}" y2="${y(t)}"/>
+         <text class="axis" x="${PAD_L - 8}" y="${(y(t) + 3.4).toFixed(1)}" text-anchor="end">${t}</text></g>`).join('')}
+      ${plot}
+      ${days.map((_, i) => marked(i)
+        ? `<text class="axis" x="${xs[i].toFixed(1)}" y="${H - 8}" text-anchor="middle">${label(i)}</text>` : '').join('')}
       <g class="hoverLayer">
-        <line class="cross" x1="0" x2="0" y1="${PAD_T}" y2="${H - PAD_B}" style="display:none"/>
-        <circle class="dotA" r="4" style="display:none"/><circle class="dotB" r="4" style="display:none"/>
+        <line class="cross" x1="0" x2="0" y1="${PAD_T}" y2="${(H - PAD_B).toFixed(1)}" style="display:none"/>
+        <circle class="dotA" r="4.5" style="display:none"/><circle class="dotB" r="4.5" style="display:none"/>
       </g>
-      ${days.map((_, i) => `<rect class="hit" x="${(x(i) - (W / days.length) / 2).toFixed(1)}" y="0"
-         width="${(W / days.length).toFixed(1)}" height="${H - PAD_B}" data-i="${i}" fill="transparent"/>`).join('')}
+      ${days.map((_, i) => `<rect class="hit" x="${(x(i) - slot / 2).toFixed(1)}" y="0"
+         width="${slot.toFixed(1)}" height="${(H - PAD_B).toFixed(1)}" data-i="${i}" fill="transparent"/>`).join('')}
     </svg>
     <div class="tip" hidden></div>
   </div>`;
@@ -1909,25 +2052,30 @@ function wireChart(range) {
   if (!wrap) return;
   const svg = wrap.querySelector('svg'), tip = wrap.querySelector('.tip');
   const cross = svg.querySelector('.cross'), dA = svg.querySelector('.dotA'), dB = svg.querySelector('.dotB');
-  const days = range.days, A = range.conversations, B = range.leads;
-  const max = Math.max(...A, ...B, 1);
-  const W = 760, H = 210, PAD_L = 30, PAD_B = 26, PAD_T = 10;
-  const x = (i) => PAD_L + (i * (W - PAD_L - 8)) / (days.length - 1);
-  const y = (v) => PAD_T + (1 - v / max) * (H - PAD_T - PAD_B);
+  const { days, A, B, W, x, y } = chartGeom(range);
+  const bars = chartStyle === 'bars';
+
+  // Let the stroke animation run the exact length of its own path.
+  svg.querySelectorAll('.lineA, .lineB').forEach((p) => {
+    try { p.style.setProperty('--len', (Math.ceil(p.getTotalLength()) + 2) + 'px'); } catch {}
+  });
 
   svg.querySelectorAll('.hit').forEach((r) => {
     const show = () => {
-      const i = Number(r.dataset.i);
-      const px = x(i);
+      const i = Number(r.dataset.i), px = x(i);
       cross.setAttribute('x1', px); cross.setAttribute('x2', px); cross.style.display = '';
-      dA.setAttribute('cx', px); dA.setAttribute('cy', y(A[i])); dA.style.display = '';
-      dB.setAttribute('cx', px); dB.setAttribute('cy', y(B[i])); dB.style.display = '';
+      // On bars the dots would float above the column tops, so the crosshair
+      // and the tooltip carry the readout on their own.
+      if (!bars) {
+        dA.setAttribute('cx', px); dA.setAttribute('cy', y(A[i])); dA.style.display = '';
+        dB.setAttribute('cx', px); dB.setAttribute('cy', y(B[i])); dB.style.display = '';
+      }
       tip.hidden = false;
       tip.innerHTML = `<b>${new Date(days[i] + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</b>
-        <span><i class="sw a"></i>${A[i]} conversation${A[i] === 1 ? '' : 's'}</span>
-        <span><i class="sw b"></i>${B[i]} lead${B[i] === 1 ? '' : 's'}</span>`;
+        <span><i class="sw s1"></i>${A[i]} conversation${A[i] === 1 ? '' : 's'}</span>
+        <span><i class="sw s2"></i>${B[i]} lead${B[i] === 1 ? '' : 's'}</span>`;
       const pct = px / W;
-      tip.style.left = `calc(${(pct * 100).toFixed(1)}% )`;
+      tip.style.left = `${(pct * 100).toFixed(1)}%`;
       tip.style.transform = `translateX(${pct > 0.75 ? '-100%' : pct < 0.12 ? '0' : '-50%'})`;
     };
     r.addEventListener('mouseenter', show);
@@ -1946,8 +2094,11 @@ async function loadTrend() {
     $('#trendPanel').hidden = false;
     $('#trendChart').innerHTML = trendChart(o.range);
     wireChart(o.range);
-    $('.ranges').querySelectorAll('button').forEach((b) =>
-      b.classList.toggle('on', Number(b.dataset.days) === rangeDays));
+    $$('.ranges button[data-days]').forEach((b) => b.classList.toggle('on', Number(b.dataset.days) === rangeDays));
+    $$('.ranges button[data-style]').forEach((b) => {
+      b.classList.toggle('on', b.dataset.style === chartStyle);
+      b.setAttribute('aria-pressed', String(b.dataset.style === chartStyle));
+    });
 
     // What it handled alone.
     const gaps = o.unanswered.length;
@@ -1974,11 +2125,19 @@ async function loadTrend() {
   } catch { $('#trendPanel').hidden = true; }
 }
 
-$('.ranges')?.addEventListener('click', (e) => {
-  const b = e.target.closest('button[data-days]');
-  if (!b) return;
-  rangeDays = Number(b.dataset.days);
-  localStorage.setItem('trendDays', String(rangeDays));
+// One listener on the toolbar covers both pill groups, so a new button never
+// needs a new handler.
+$('#trendPanel .chartTools')?.addEventListener('click', (e) => {
+  const days = e.target.closest('button[data-days]');
+  if (days) {
+    rangeDays = Number(days.dataset.days);
+    localStorage.setItem('trendDays', String(rangeDays));
+    return loadTrend();
+  }
+  const style = e.target.closest('button[data-style]');
+  if (!style || style.dataset.style === chartStyle) return;
+  chartStyle = style.dataset.style;
+  localStorage.setItem('trendStyle', chartStyle);
   loadTrend();
 });
 
