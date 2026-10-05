@@ -365,6 +365,12 @@
   .fieldRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 18px; }
   .colorField { display: flex; align-items: center; gap: 10px; }
   .colorField input[type="text"] { flex: 1; min-width: 0; font-family: var(--mono); font-size: 13px; }
+  .btn.tiny { flex: none; padding: 8px 11px; font-size: 12px; }
+  /* A swatch showing "no colour chosen" rather than a misleading black. */
+  .swatch.auto { background:
+      linear-gradient(135deg, var(--card) 0 48%, var(--mist) 48% 52%, var(--ink) 52% 100%); }
+  .swatch.auto::-webkit-color-swatch { opacity: 0; }
+  .swatch.auto::-moz-color-swatch { opacity: 0; }
   /* A native colour input, restyled to a plain swatch. Typing a hex still
      works; this is for the clients who would rather point at a colour. */
   .swatch { width: 38px; height: 38px; flex: none; padding: 0; border-radius: 9px; cursor: pointer;
@@ -388,6 +394,8 @@
   .cpBody { padding: 13px 12px 11px; background: var(--paper); min-height: 118px; }
   .cpMsg { margin: 0; background: var(--card); border-radius: 3px 11px 11px 11px; padding: 9px 11px;
     font-size: 12.5px; line-height: 1.45; box-shadow: 0 1px 2px rgba(0,0,0,.07); }
+  .cpMsg.mine { background: var(--prevAccent, var(--pine)); color: var(--prevOn, #fff);
+    border-radius: 11px 3px 11px 11px; margin: 9px 0 0 auto; max-width: 86%; box-shadow: none; }
   .cpChips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
   .cpChips span { font-size: 10.5px; padding: 4px 9px; border-radius: 99px; background: var(--card);
     border: 1px solid var(--mist); color: var(--muted); }
@@ -828,8 +836,13 @@
         <div class="search">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
             <circle cx="7" cy="7" r="4.6"/><path d="m10.4 10.4 4 4" stroke-linecap="round"/></svg>
-          <input type="search" id="q" autocomplete="off" placeholder="Search leads, chats, knowledge…"
-                 aria-label="Search this section" />
+          <!-- Named so that nothing reads it as a username or an email, and
+               opted out of every password manager that honours a flag. The
+               real fix is the form around the password fields further down;
+               this is the second lock on the same door. -->
+          <input type="search" id="q" name="section-filter" autocomplete="off"
+                 data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other"
+                 placeholder="Search leads, chats, knowledge…" aria-label="Search this section" />
           <button class="clearQ" id="clearQ" type="button" aria-label="Clear search" hidden>&times;</button>
         </div>
         <button class="barExport" id="barExport" type="button">
@@ -1035,7 +1048,12 @@
             <div><strong id="cpName">Assistant</strong><small><i class="cpDot"></i><span id="cpStatus">Online now</span></small></div>
             <span class="cpX" aria-hidden="true">&times;</span>
           </header>
+          <!-- A visitor message as well as the bot's. The visitor's bubble is
+               painted in the widget colour, so without one here the text
+               colour could only be judged from the header — which is the
+               smallest type in the widget. -->
           <div class="cpBody"><p class="cpMsg" id="cpGreeting">Hi. Ask me anything about what we do.</p>
+            <p class="cpMsg mine">What are your opening hours?</p>
             <div class="cpChips" id="cpChips"></div></div>
           <div class="cpBar"><span>Type your message</span><em id="cpSend"></em></div>
           <div class="cpFoot" id="cpFoot">Powered by aiFrontBot</div>
@@ -1078,12 +1096,26 @@
             </div>
           </div>
         </div>
-        <div class="field">
-          <label for="sAccent">Chat widget colour</label>
-          <div class="hint">The header and send button on the visitor&rsquo;s side. Watch the preview as you change it.</div>
-          <div class="colorField">
-            <input type="color" class="swatch" id="sAccentPick" aria-label="Pick the chat widget colour" />
-            <input type="text" id="sAccent" placeholder="#1B3A2F" />
+        <div class="fieldRow">
+          <div class="field">
+            <label for="sAccent">Chat widget colour</label>
+            <div class="hint">The header and send button on the visitor&rsquo;s side.</div>
+            <div class="colorField">
+              <input type="color" class="swatch" id="sAccentPick" aria-label="Pick the chat widget colour" />
+              <input type="text" id="sAccent" placeholder="#1B3A2F" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="sAccentText">Chat text colour</label>
+            <div class="hint">The writing on that colour. Leave empty and it picks whichever of
+              white or near-black reads better.</div>
+            <div class="colorField">
+              <input type="color" class="swatch" id="sAccentTextPick" aria-label="Pick the chat text colour" />
+              <input type="text" id="sAccentText" placeholder="automatic" />
+              <button class="btn ghost tiny" id="autoAccentText" type="button"
+                      title="Go back to picking it automatically">Auto</button>
+            </div>
+            <p class="chanWarn" id="accentTextWarn" hidden></p>
           </div>
         </div>
         <div class="fieldRow">
@@ -1248,9 +1280,28 @@
       </div>
       <div class="panel" id="pwPanel">
         <h2>Change your password</h2>
-        <div class="field"><label for="pwCurrent">Current password</label><input type="password" id="pwCurrent" /></div>
-        <div class="field"><label for="pwNext">New password</label><div class="hint">At least 8 characters.</div><input type="password" id="pwNext" /></div>
-        <button class="btn" id="savePw">Change password</button>
+        <!-- A real <form> with a username field in it, on purpose.
+             These were two bare password inputs with no form around them, so
+             Chrome's password manager went looking for the username to pair
+             them with, walked up the page and filled the signed-in email into
+             the first text input it found — which is the search box in the top
+             bar. The search box then quietly filtered every list to nothing.
+             Given a complete form, autocomplete attributes and a username of
+             its own, the password manager stays inside this panel. -->
+        <form id="pwForm" autocomplete="on">
+          <!-- Stays a text input, not type="hidden": a password manager ignores
+               hidden fields, and ignoring this one is exactly what sends it
+               hunting up the page again. Parked off-screen instead, out of the
+               tab order and out of the accessibility tree. -->
+          <input type="text" id="pwUser" name="username" autocomplete="username"
+                 tabindex="-1" aria-hidden="true" readonly
+                 style="position:absolute;left:-9999px;top:0;width:10px;height:10px;opacity:0;pointer-events:none" />
+          <div class="field"><label for="pwCurrent">Current password</label>
+            <input type="password" id="pwCurrent" name="current-password" autocomplete="current-password" /></div>
+          <div class="field"><label for="pwNext">New password</label><div class="hint">At least 8 characters.</div>
+            <input type="password" id="pwNext" name="new-password" autocomplete="new-password" /></div>
+          <button class="btn" id="savePw" type="submit">Change password</button>
+        </form>
       </div>
     </section>
   </main>
@@ -1343,6 +1394,9 @@ function activeView() { return $('.view.on'); }
 function syncTopbar() {
   const v = activeView();
   if (!v) return;
+  // A term typed on Leads has no business narrowing Conversations, and a stray
+  // value that arrived some other way must never silently empty a list.
+  clearSearch();
   const h = v.querySelector(':scope > h1');
   const sub = h?.nextElementSibling?.classList.contains('sub') ? h.nextElementSibling : null;
   $('#barTitle').textContent = h?.textContent.trim() || 'Dashboard';
@@ -1367,6 +1421,23 @@ function syncTopbar() {
 // refresh of the data underneath it.
 let searchQ = '';
 function searchTerm() { return searchQ; }
+
+// Empties the box without repainting — callers that need a repaint do it
+// themselves, and syncTopbar is about to repaint the whole section anyway.
+function clearSearch() {
+  searchQ = '';
+  const box = $('#q');
+  if (box) box.value = '';
+  $('#clearQ').hidden = true;
+}
+
+// A password manager fills in after the page settles, so one look a moment
+// later catches anything that slipped past the attributes on the field. The
+// box is empty on arrival by design; anything in it that the client did not
+// type is not a search.
+addEventListener('load', () => setTimeout(() => {
+  if ($('#q')?.value && !searchQ) { clearSearch(); runSearch(); }
+}, 400));
 
 function runSearch() {
   const v = activeView();
@@ -2063,8 +2134,13 @@ function paintPreview() {
   if (!dock) return;
   const v = (id, fallback = '') => ($(id)?.value || '').trim() || fallback;
   const accent = /^#[0-9a-f]{3,8}$/i.test(v('#sAccent')) ? v('#sAccent') : getComputedStyle(document.documentElement).getPropertyValue('--pine').trim();
+  // The client's own choice wins; empty falls back to the automatic pick. The
+  // same rule the widget applies, so the preview is the truth.
+  const chosen = v('#sAccentText');
+  const on = /^#[0-9a-f]{3,8}$/i.test(chosen) ? chosen : readableOn(accent);
   dock.style.setProperty('--prevAccent', accent);
-  dock.style.setProperty('--prevOn', readableOn(accent));
+  dock.style.setProperty('--prevOn', on);
+  warnAccentText(accent, on, Boolean(/^#[0-9a-f]{3,8}$/i.test(chosen)));
 
   $('#cpName').textContent = v('#sBotName', 'Assistant');
   $('#cpStatus').textContent = v('#sStatus', 'Online now') + ' · ' +
@@ -2097,7 +2173,30 @@ const COLOR_PAIRS = [
   ['#sDashAccent', '#sDashAccentPick', '#1B3A2F'],
   ['#sDashHighlight', '#sDashHighlightPick', '#B8862B'],
   ['#sAccent', '#sAccentPick', '#1B3A2F'],
+  ['#sAccentText', '#sAccentTextPick', '#FFFFFF'],
 ];
+
+// "Auto" is a real state, not a colour, so the swatch shows a split black and
+// white tile rather than pretending the client chose one of them.
+function markAutoSwatch() {
+  const empty = !$('#sAccentText').value.trim();
+  $('#sAccentTextPick').classList.toggle('auto', empty);
+}
+
+// Says plainly when a pair will be hard to read, with the number, rather than
+// silently overriding what the client asked for. 4.5:1 is the readable-body-
+// text threshold; 3:1 is the floor for the large type in the header.
+function warnAccentText(accent, on, explicit) {
+  const el = $('#accentTextWarn');
+  if (!el) return;
+  const ratio = contrast(accent, on);
+  if (!explicit || ratio === null || ratio >= 4.5) { el.hidden = true; return; }
+  const auto = readableOn(accent);
+  const better = contrast(accent, auto);
+  el.hidden = false;
+  el.textContent = `That pairing is ${ratio.toFixed(1)}:1 — hard to read${ratio < 3 ? ', and unreadable at small sizes' : ''}. `
+    + `Automatic would give ${better.toFixed(1)}:1.`;
+}
 
 function syncSwatches() {
   for (const [textSel, pickSel, fallback] of COLOR_PAIRS) {
@@ -2106,8 +2205,13 @@ function syncSwatches() {
     const v = text.value.trim();
     // A colour input rejects anything but #rrggbb, so shorthand is expanded and
     // an alpha channel trimmed purely for the swatch's benefit.
-    pick.value = normaliseHex(v) || normaliseHex(text.placeholder) || fallback;
+    // "automatic" is a placeholder word, not a colour, so the swatch falls
+    // through to the automatic pick for the current accent instead.
+    pick.value = normaliseHex(v)
+      || (textSel === '#sAccentText' ? readableOn($('#sAccent')?.value || '#1B3A2F') : normaliseHex(text.placeholder))
+      || fallback;
   }
+  markAutoSwatch();
 }
 
 function normaliseHex(s) {
@@ -2130,6 +2234,19 @@ for (const [textSel, pickSel] of COLOR_PAIRS) {
   });
   $(textSel)?.addEventListener('input', () => { syncSwatches(); livePreviewBrand(); });
 }
+
+// Back to automatic. Clearing the field is the same thing, but a client who
+// has just dragged a swatch has no obvious way to un-choose a colour.
+$('#autoAccentText')?.addEventListener('click', () => {
+  $('#sAccentText').value = '';
+  settingsTouched = true;
+  syncSwatches();
+  paintPreview();
+});
+
+// Changing the widget colour moves the automatic pick with it, so the
+// "automatic" swatch has to be redrawn alongside.
+$('#sAccent')?.addEventListener('input', () => { syncSwatches(); paintPreview(); });
 
 // Paints the chrome from the unsaved fields. Saving is what makes it stick;
 // this is only so the choice can be judged before committing to it.
@@ -2163,6 +2280,7 @@ function fillSettings(s, publicKey, force = false) {
   if (!force && settingsBusy()) return;
   if (force) settingsTouched = false;
   $('#sBotName').value = s.botName; $('#sGreeting').value = s.greeting; $('#sAccent').value = s.accent;
+  $('#sAccentText').value = s.accentText || '';
   $('#sStatus').value = s.statusText ?? '';
   $('#sTone').value = s.tone; $('#sLangs').value = s.languages; $('#sFacts').value = s.businessFacts;
   $('#sHandoff').value = s.handoffMessage; $('#sCap').value = s.monthlyMessageCap;
@@ -2248,11 +2366,31 @@ function chartHue(hex) {
   return '#' + rgb.map((c) => Math.max(0, Math.min(255, c)).toString(16).padStart(2, '0')).join('');
 }
 
+// Which of white or near-black reads better on a given colour. Measured by
+// actual contrast ratio rather than the old brightness average, so the preview
+// here and the live widget always reach the same answer — otherwise a client
+// picks a colour that looks right in the preview and ships something else.
 function readableOn(hex) {
-  const h = hex.replace('#', '');
+  const L = luminance(hex);
+  if (L === null) return '#FFFFFF';
+  return (1.05 / (L + 0.05)) >= ((L + 0.05) / 0.05) ? '#FFFFFF' : '#1A1206';
+}
+
+function luminance(hex) {
+  const h = String(hex || '').replace('#', '');
   const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h.slice(0, 6);
-  const [r, g, b] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
-  return (r * 299 + g * 587 + b * 114) / 1000 > 145 ? '#1A1206' : '#FFFFFF';
+  const rgb = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+  if (rgb.some(Number.isNaN)) return null;
+  const lin = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+  return 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
+}
+
+// The WCAG ratio between two colours, used to warn a client before they ship
+// a header nobody can read.
+function contrast(a, b) {
+  const la = luminance(a), lb = luminance(b);
+  if (la === null || lb === null) return null;
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
 function applyBrandVars(b) {
@@ -2306,6 +2444,10 @@ $('#saveSettings').onclick = async () => {
       method: 'PUT',
       body: JSON.stringify({
         botName: $('#sBotName').value, greeting: $('#sGreeting').value, accent: $('#sAccent').value,
+        // Only a real hex is stored. Anything else — a colour name, a typo,
+        // the word "automatic" — is saved as empty, which means automatic, so
+        // a mistyped value can never leave a client with invisible text.
+        accentText: normaliseHex($('#sAccentText').value) ? $('#sAccentText').value.trim() : '',
         statusText: $('#sStatus').value.trim(),
         tone: $('#sTone').value, languages: $('#sLangs').value, businessFacts: $('#sFacts').value,
         handoffMessage: $('#sHandoff').value, monthlyMessageCap: Number($('#sCap').value) || 5000,
@@ -2898,13 +3040,14 @@ $('#delWs').onclick = async () => {
 };
 
 // --- change password ---
-$('#savePw').onclick = async () => {
+$('#pwForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
   try {
     await api('/api/me/password', { method: 'POST', body: JSON.stringify({ current: $('#pwCurrent').value, next: $('#pwNext').value }) });
     $('#pwCurrent').value = ''; $('#pwNext').value = '';
     toast('Password changed.');
   } catch (e) { toast(e.message); }
-};
+});
 
 async function loadChannels() {
   try {
@@ -3109,6 +3252,9 @@ restoreBrand();   // paint the client's brand before the first request returns
     me = await api('/api/me');
   } catch { return; }                     // api() already redirected
   $('#whoName').textContent = me.email;
+  // Gives the password manager the username it was hunting for, inside the
+  // form it belongs to.
+  $('#pwUser').value = me.email || '';
   $('#navClients').hidden = me.role !== 'owner';
   $('#pwPanel').hidden = me.usingKey;
   syncTopbar();

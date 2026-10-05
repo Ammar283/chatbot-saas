@@ -14,8 +14,51 @@
   if (!KEY) return console.warn('[chat widget] Missing data-key attribute.');
 
   const STORE = 'fd_chat_' + KEY;
-  let config = { botName: 'Assistant', greeting: 'Hi. How can I help?', accent: '#1B3A2F', logoUrl: '', teaser: '', autoOpenSeconds: 0, quickReplies: [], footerText: '', footerUrl: '', fontFamily: '', fontUrl: '', statusText: 'Online now' };
+  let config = { botName: 'Assistant', greeting: 'Hi. How can I help?', accent: '#1B3A2F', accentText: '', logoUrl: '', teaser: '', autoOpenSeconds: 0, quickReplies: [], footerText: '', footerUrl: '', fontFamily: '', fontUrl: '', statusText: 'Online now' };
+
+  // Everything that sits on top of the accent used to be hardcoded white,
+  // which is unreadable on a pale brand colour — a lime or a yellow header
+  // with white text on it is a widget nobody can read. The client can now set
+  // this colour themselves; left empty, it is worked out from the accent.
+  function onAccent() {
+    const set = String(config.accentText || '').trim();
+    if (/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(set)) return set;
+    return readableOn(config.accent);
+  }
+
+  // The accent used as TEXT on the widget's white body — links and chips.
+  // A pale brand colour that works as a background is invisible as 13px type,
+  // so it is darkened until it reads. Untouched for anything already dark
+  // enough, which is most accents.
+  function inkAccent() {
+    const h = String(config.accent || '').replace('#', '');
+    const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h.slice(0, 6);
+    let rgb = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+    if (rgb.some(Number.isNaN)) return '#1B3A2F';
+    const lin = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+    const L = () => 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
+    // 0.175 relative luminance is about 4.5:1 against white — readable body text.
+    for (let i = 0; i < 12 && L() > 0.175; i++) rgb = rgb.map((c) => Math.round(c * 0.85));
+    return '#' + rgb.map((c) => Math.max(0, c).toString(16).padStart(2, '0')).join('');
+  }
+
+  // Relative luminance, the same measure a contrast checker uses, rather than
+  // the cheaper brightness average — that one calls a saturated lime dark and
+  // puts white on it, which is the bug this is here to avoid.
+  function readableOn(hex) {
+    const h = String(hex || '').replace('#', '');
+    const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h.slice(0, 6);
+    const rgb = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+    if (rgb.some(Number.isNaN)) return '#FFFFFF';
+    const lin = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+    const L = 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
+    // Compare both candidates properly and take the better one, so a mid-tone
+    // accent gets whichever actually reads, not whichever side of a guess it
+    // happens to fall on.
+    return (1.05 / (L + 0.05)) >= ((L + 0.05) / 0.05) ? '#FFFFFF' : '#15120B';
+  }
   let menuShown = false;
+  let suspended = false;
   // Auto-opening a full-screen panel on a phone hijacks the page before the
   // visitor has read anything, so this is desktop only.
   const isPhone = matchMedia('(max-width: 520px)').matches;
@@ -76,6 +119,11 @@
   }
 
   function render() {
+    // Resolved once per render: every surface painted in the accent uses this
+    // for its text, so the header, the visitor's bubbles, the launcher and the
+    // Send button can never drift apart.
+    const ON = onAccent();
+    const INK = inkAccent();   // the accent, dark enough to read as text on white
     root.innerHTML = `
       <style>
         :host, * { box-sizing: border-box; }
@@ -86,13 +134,13 @@
         .launcher {
           position: fixed; bottom: 20px; right: 20px; width: 58px; height: 58px;
           border-radius: 50%; border: 0; cursor: pointer; background: ${config.accent};
-          color: #fff; display: grid; place-items: center;
+          color: ${ON}; display: grid; place-items: center;
           box-shadow: 0 6px 24px rgba(0,0,0,.22); transition: transform .18s ease;
         }
         .launcher:hover { transform: scale(1.06); }
         /* contain, not cover: a logo must never be cropped by the circle. */
         .launcher img { width: 34px; height: 34px; object-fit: contain; display: block; pointer-events: none; }
-        .launcher:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+        .launcher:focus-visible { outline: 3px solid ${ON}; outline-offset: 3px; }
         .badge {
           position: absolute; top: -2px; right: -2px; min-width: 20px; height: 20px;
           border-radius: 10px; background: #C2453B; color: #fff; font-size: 11px; font-weight: 700;
@@ -118,21 +166,21 @@
         }
         .panel.open { opacity: 1; transform: none; pointer-events: auto; }
 
-        .head { background: ${config.accent}; color: #fff; padding: 13px 15px; display: flex; align-items: center; gap: 11px; }
-        .head img { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; background: rgba(255,255,255,.15); flex: none; padding:5px }
+        .head { background: ${config.accent}; color: ${ON}; padding: 13px 15px; display: flex; align-items: center; gap: 11px; }
+        .head img { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; background: rgba(255,255,255,.15); flex: none; }
         .head .mark { width: 34px; height: 34px; border-radius: 8px; background: rgba(255,255,255,.16); display: grid; place-items: center; font-weight: 700; font-size: 15px; flex: none; }
         .head b { font-size: 15px; font-weight: 600; display: block; }
         .head small { display: block; font-size: 11.5px; opacity: .78; font-weight: 400; }
         .head small::before { content: "●"; color: #7BD88F; font-size: 8px; vertical-align: middle; margin-right: 4px; }
-        .close { margin-left: auto; background: none; border: 0; color: #fff; opacity: .8; cursor: pointer; font-size: 22px; line-height: 1; padding: 4px 6px; border-radius: 6px; }
+        .close { margin-left: auto; background: none; border: 0; color: ${ON}; opacity: .8; cursor: pointer; font-size: 22px; line-height: 1; padding: 4px 6px; border-radius: 6px; }
         .close:hover { opacity: 1; background: rgba(255,255,255,.12); }
 
         .log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; background: #FAFAF8; }
         .msg { max-width: 84%; padding: 10px 13px; border-radius: 14px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
         .bot { background: #fff; border: 1px solid rgba(0,0,0,.07); align-self: flex-start; border-bottom-left-radius: 4px; color: #16181D; }
-        .me  { background: ${config.accent}; color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+        .me  { background: ${config.accent}; color: ${ON}; align-self: flex-end; border-bottom-right-radius: 4px; }
         .msg a { color: inherit; text-decoration: underline; }
-        .bot a { color: ${config.accent}; }
+        .bot a { color: ${INK}; }
 
         /* Opening menu. A grid of cards reads as "pick one" where a row of
            small pills reads as "here are some hints" — and picking one is
@@ -147,10 +195,10 @@
         }
         .menuItem:hover { border-color: ${config.accent}; transform: translateY(-1px); }
         .menuItem:focus-visible { outline: 2px solid ${config.accent}; outline-offset: 1px; }
-        .menuItem.wide { grid-column: 1 / -1; background: ${config.accent}; color: #fff; border-color: ${config.accent}; font-weight: 500; }
+        .menuItem.wide { grid-column: 1 / -1; background: ${config.accent}; color: ${ON}; border-color: ${config.accent}; font-weight: 500; }
 
         .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-        .chip { background: #fff; border: 1px solid ${config.accent}33; color: ${config.accent};
+        .chip { background: #fff; border: 1px solid ${config.accent}33; color: ${INK};
                 border-radius: 999px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; font-family: inherit; }
         .chip:hover { background: ${config.accent}12; }
 
@@ -161,7 +209,7 @@
         .bar { display: flex; gap: 8px; padding: 12px; border-top: 1px solid rgba(0,0,0,.07); background: #fff; }
         .bar input { flex: 1; min-width: 0; border: 1px solid rgba(0,0,0,.14); border-radius: 10px; padding: 10px 12px; font-size: 14px; font-family: inherit; color: #16181D; background: #fff; }
         .bar input:focus { outline: 2px solid ${config.accent}66; outline-offset: -1px; border-color: ${config.accent}; }
-        .bar button { background: ${config.accent}; color: #fff; border: 0; border-radius: 10px; padding: 0 16px; cursor: pointer; font-size: 14px; font-weight: 500; font-family: inherit; flex: none; }
+        .bar button { background: ${config.accent}; color: ${ON}; border: 0; border-radius: 10px; padding: 0 16px; cursor: pointer; font-size: 14px; font-weight: 500; font-family: inherit; flex: none; }
         .bar button:disabled { opacity: .45; cursor: default; }
         .foot { text-align: center; font-size: 10.5px; color: #9aa0a6; padding: 0 0 8px; background: #fff; }
         /* inherit the muted grey rather than turning link-blue */
@@ -237,8 +285,8 @@
   // The closed launcher carries the aiFrontBot mark; the open one shows an X,
   // which reads as "close" far faster than a logo does.
   const LAUNCHER_ICON = script?.dataset.icon
-    || 'https://aifrontbot.net/wp-content/uploads/2026/09/Ai-frontbot-logo-png-1.png';
-  const CLOSE_ICON = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+    || 'https://aifrontbot.net/wp-content/uploads/2026/09/cropped-Ai-frontbot-logo-png.png';
+  const CLOSE_ICON = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
   // If the logo ever fails to load the button must not sit there empty, so it
   // falls back to the generic chat bubble.
   const CHAT_ICON = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 21 11.5z"/></svg>';
@@ -356,9 +404,15 @@
 
   fetch(`${API}/api/config/${KEY}`)
     .then((r) => r.json())
-    .then((c) => { if (!c.error) { config = { ...config, ...c }; loadFont(config.fontUrl); } })
+    .then((c) => {
+      // Paused for billing: take the whole widget off the page. The visitor
+      // sees a normal site — never a notice about the owner's account.
+      if (c && c.suspended) { host.remove(); suspended = true; return; }
+      if (!c.error) { config = { ...config, ...c }; loadFont(config.fontUrl); }
+    })
     .catch(() => {})
     .finally(() => {
+      if (suspended) return;
       render();
       const delay = Number(config.autoOpenSeconds) || 0;
       if (delay > 0 && !isPhone) {

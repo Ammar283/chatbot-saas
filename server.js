@@ -122,6 +122,9 @@ app.get('/api/config/:publicKey', (req, res) => {
   if (s.suspended) return res.json({ suspended: true });
   res.json({
     botName: s.botName, greeting: s.greeting, accent: s.accent,
+    // Empty means "work it out from the accent". Sent as empty rather than
+    // resolved here so the widget can recompute if the accent ever changes.
+    accentText: s.accentText || '',
     logoUrl: s.logoUrl || '', teaser: s.teaser || '',
     autoOpenSeconds: Number(s.autoOpenSeconds) || 0,
     quickReplies: Array.isArray(s.quickReplies) ? s.quickReplies.slice(0, 8) : [],
@@ -763,7 +766,11 @@ app.get('/api/me', requireAdmin, (req, res) => {
 app.post('/api/me/password', requireAdmin, (req, res) => {
   if (!req.account) return res.status(400).json({ error: 'Sign in with an email and password to change it.' });
   const { current, next } = req.body || {};
-  if (!auth.login(req.account.email, current)) return res.status(401).json({ error: 'Current password is incorrect.' });
+  // 403, not 401. The client reads 401 as "your session has expired" and sends
+  // you to the login page, so mistyping your current password used to sign you
+  // out instead of telling you it was wrong. The request IS authenticated —
+  // one of its values is simply rejected.
+  if (!auth.login(req.account.email, current)) return res.status(403).json({ error: 'Current password is incorrect.' });
   try {
     auth.setPassword(req.account.id, next);
     res.json({ ok: true });
