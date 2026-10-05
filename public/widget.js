@@ -140,6 +140,7 @@
         .launcher:hover { transform: scale(1.06); }
         /* contain, not cover: a logo must never be cropped by the circle. */
         .launcher img { width: 34px; height: 34px; object-fit: contain; display: block; pointer-events: none; }
+        .launcher svg { display: block; pointer-events: none; }
         .launcher:focus-visible { outline: 3px solid ${ON}; outline-offset: 3px; }
         .badge {
           position: absolute; top: -2px; right: -2px; min-width: 20px; height: 20px;
@@ -263,12 +264,14 @@
         </div>
 
         <button class="launcher" aria-label="${open ? 'Close' : 'Open'} chat" aria-expanded="${open}">
-          ${open ? CLOSE_ICON : `<img class="lIcon" src="${esc(LAUNCHER_ICON)}" alt="" />`}
+          ${open ? CLOSE_ICON
+            : LAUNCHER_ICON ? `<img class="lIcon" src="${esc(LAUNCHER_ICON)}" alt="" />` : CHAT_ICON}
           ${unread && !open ? `<span class="badge">${unread}</span>` : ''}
         </button>
       </div>`;
 
-    const lIcon = root.querySelector('.lIcon');
+    // A custom icon that fails to load must not leave an empty button.
+    const lIcon = root.querySelector('img.lIcon');
     if (lIcon) lIcon.addEventListener('error', () => { lIcon.outerHTML = CHAT_ICON; });
 
     root.querySelector('.launcher').addEventListener('click', toggle);
@@ -282,14 +285,15 @@
     paint();
   }
 
-  // The closed launcher carries the aiFrontBot mark; the open one shows an X,
-  // which reads as "close" far faster than a logo does.
-  const LAUNCHER_ICON = script?.dataset.icon
-    || 'https://aifrontbot.net/wp-content/uploads/2026/09/cropped-Ai-frontbot-logo-png.png';
+  // The closed launcher used to carry the aiFrontBot logo as a PNG, which has
+  // its blue baked into the pixels: on a lime or any other brand colour it sat
+  // there blue, and no CSS could reach it. It is drawn as an SVG on
+  // currentColor instead, so it takes the chat text colour along with
+  // everything else painted on the accent. data-icon still overrides it with
+  // an image for anyone who wants their own mark there.
+  const CHAT_ICON = '<svg class="lIcon" width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 21 11.5z"/></svg>';
+  const LAUNCHER_ICON = script?.dataset.icon || '';
   const CLOSE_ICON = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
-  // If the logo ever fails to load the button must not sit there empty, so it
-  // falls back to the generic chat bubble.
-  const CHAT_ICON = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 21 11.5z"/></svg>';
 
   const TEASER_DISMISSED = STORE + '_nudged';
 
