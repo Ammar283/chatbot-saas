@@ -141,6 +141,14 @@
         /* contain, not cover: a logo must never be cropped by the circle. */
         .launcher img { width: 34px; height: 34px; object-fit: contain; display: block; pointer-events: none; }
         .launcher svg { display: block; pointer-events: none; }
+        /* The mark is the mask; currentColor is the paint, so it tracks the
+           chat text colour exactly as the header and the bubbles do. */
+        .lMark {
+          width: 30px; height: 30px; display: block; pointer-events: none;
+          background-color: currentColor;
+          -webkit-mask: url("${MARK_URL}") center / contain no-repeat;
+                  mask: url("${MARK_URL}") center / contain no-repeat;
+        }
         .launcher:focus-visible { outline: 3px solid ${ON}; outline-offset: 3px; }
         .badge {
           position: absolute; top: -2px; right: -2px; min-width: 20px; height: 20px;
@@ -265,7 +273,8 @@
 
         <button class="launcher" aria-label="${open ? 'Close' : 'Open'} chat" aria-expanded="${open}">
           ${open ? CLOSE_ICON
-            : LAUNCHER_ICON ? `<img class="lIcon" src="${esc(LAUNCHER_ICON)}" alt="" />` : CHAT_ICON}
+            : LAUNCHER_ICON ? `<img class="lIcon" src="${esc(LAUNCHER_ICON)}" alt="" />`
+            : (MASK_OK && markReady) ? BRAND_MARK : CHAT_ICON}
           ${unread && !open ? `<span class="badge">${unread}</span>` : ''}
         </button>
       </div>`;
@@ -285,12 +294,30 @@
     paint();
   }
 
-  // The closed launcher used to carry the aiFrontBot logo as a PNG, which has
-  // its blue baked into the pixels: on a lime or any other brand colour it sat
-  // there blue, and no CSS could reach it. It is drawn as an SVG on
-  // currentColor instead, so it takes the chat text colour along with
-  // everything else painted on the accent. data-icon still overrides it with
-  // an image for anyone who wants their own mark there.
+  // The aiFrontBot mark, drawn as a CSS mask rather than an <img>.
+  //
+  // The first version of this was the full-colour logo PNG, whose blue was
+  // baked into the pixels: on a lime launcher it sat there blue and no CSS
+  // could reach it. The mark is a plain silhouette, so its alpha channel is
+  // used as a mask and the shape is painted in currentColor — it keeps the
+  // brand shape AND follows the chat text colour, instead of having to choose
+  // between the two. Served from this server, so it never depends on the
+  // marketing site staying up.
+  const MARK_URL = `${API}/launcher-mark.png`;
+  const BRAND_MARK = `<span class="lMark" aria-hidden="true"></span>`;
+  // Masks are everywhere now, but if they are not supported the shape would
+  // paint as a solid block, so that case falls back to the line icon.
+  const MASK_OK = typeof CSS !== 'undefined' && CSS.supports
+    && (CSS.supports('mask-image', 'url(a)') || CSS.supports('-webkit-mask-image', 'url(a)'));
+  // And a mask whose image never arrives paints nothing at all, which would
+  // leave the client with an empty circle on their site. So the mark is only
+  // used once the file has actually loaded; until then, and for good if it
+  // never does, the line icon stands in. A <img> can't do this job — it would
+  // show the shape in its own colour, which is the bug this replaced.
+  let markReady = false;
+  const markLoader = new Image();
+  markLoader.onload = () => { markReady = true; render(); };
+  markLoader.src = MARK_URL;
   const CHAT_ICON = '<svg class="lIcon" width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 21 11.5z"/></svg>';
   const LAUNCHER_ICON = script?.dataset.icon || '';
   const CLOSE_ICON = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
