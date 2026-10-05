@@ -125,7 +125,18 @@
   }
   .keybox { font-family: var(--mono); font-size: 12px; background: var(--paper); border: 1px solid var(--mist);
             border-radius: 7px; padding: 9px 11px; overflow-wrap: anywhere; margin: 6px 0 10px; }
-  .rail .spacer { margin-top: auto; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; opacity: .4; }
+  /* Pinned to the floor of the rail by margin-top:auto, with a hairline above
+     it so it reads as a footer rather than a stray line after the menu. */
+  .rail .spacer { margin-top: auto; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.14);
+    font-size: 11.5px; color: rgba(255,255,255,.52); display: flex; align-items: center; gap: 7px; }
+  .rail .spacer b { color: var(--brass); font-weight: 600; }
+  .rail .spacer .liveDot { width: 7px; height: 7px; border-radius: 99px; background: var(--brass); flex: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    .rail .spacer .liveDot { animation: pulseDot 2.4s ease-in-out infinite; }
+  }
+  @keyframes pulseDot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .45; transform: scale(.82); } }
+  .rail .spacer.down b { color: #F0A5A5; }
+  .rail .spacer.down .liveDot { background: #F0A5A5; animation: none; }
   .nav button { background: none; border: 0; text-align: left; padding: 9px 11px; border-radius: 7px; color: #C9D3C6; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
   /* display:flex above beats the browser's own [hidden] { display: none }, so
      owner-only tabs stayed visible to clients. This puts it back. */
@@ -150,7 +161,45 @@
   /* A translucent white stays readable whatever the rail colour is set to. */
   .nav .count { color: #fff; background: rgba(255,255,255,.16); font-family: var(--mono); font-size: 11px;
                 opacity: .95; padding: 3px 8px; border-radius: 3px; }
-  .main { padding: 30px 34px 60px; max-width: 1480px; }
+  .main { padding: 0 0 60px; max-width: 1480px; }
+  .main > .view, .main > .suspendBar { padding: 0 34px; }
+
+  /* ---- top bar ----
+     The page title, a search box and the export button, on one line that stays
+     put while the content scrolls. It replaces the per-view <h1>: those are
+     still in the markup (they carry the wording and the heading level for a
+     screen reader) but hidden, and their text is mirrored up here on each
+     switch, so adding a view never means remembering to register its title. */
+  .topbar { position: sticky; top: 0; z-index: 30; background: var(--card);
+    border-bottom: 1px solid var(--mist); padding: 16px 34px; margin-bottom: 22px;
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .topbar .barTitle { flex: 1; min-width: 190px; }
+  .topbar h1 { font-size: 23px; margin: 0; }
+  .topbar .sub { margin: 2px 0 0; font-size: 13px; }
+  .barTools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .search { position: relative; }
+  .search svg { position: absolute; left: 11px; top: 50%; margin-top: -7px; width: 14px; height: 14px;
+    color: var(--muted); pointer-events: none; }
+  .search input { width: 260px; max-width: 100%; padding: 9px 30px 9px 32px; border-radius: 9px;
+    border: 1px solid var(--mist); background: var(--paper); font: inherit; font-size: 13px; color: var(--ink);
+    transition: border-color .18s, box-shadow .18s, background .18s; }
+  .search input:focus { outline: none; background: var(--card); border-color: var(--brass);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brass) 22%, transparent); }
+  .search .clearQ { position: absolute; right: 6px; top: 50%; margin-top: -11px; width: 22px; height: 22px;
+    border: 0; background: none; color: var(--muted); font-size: 17px; line-height: 1; cursor: pointer;
+    border-radius: 5px; }
+  .search .clearQ:hover { background: var(--mist); color: var(--ink); }
+  .barExport { display: inline-flex; align-items: center; gap: 7px; background: var(--ink); color: #fff;
+    border: 0; border-radius: 9px; padding: 10px 15px; font: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: transform .16s cubic-bezier(.2,.8,.3,1), box-shadow .16s, opacity .16s; }
+  .barExport svg { width: 14px; height: 14px; }
+  .barExport:hover { transform: translateY(-1px); box-shadow: 0 8px 18px -10px rgba(0,0,0,.7); }
+  .barExport:active { transform: none; }
+  .barExport[disabled] { opacity: .5; cursor: default; transform: none; box-shadow: none; }
+  /* The real headings stay for assistive tech and for the mirror to read. */
+  .view > h1, .view > h1 + .sub, .pageHead { position: absolute; width: 1px; height: 1px;
+    overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+  .noHits { padding: 26px 4px; color: var(--muted); font-size: 14px; }
 
   h1 { font-family: var(--display); font-size: 27px; font-weight: 700; letter-spacing: -.025em; }
   .sub { color: var(--muted); margin-top: 3px; margin-bottom: 24px; }
@@ -298,16 +347,34 @@
      grid page leaves the layout stale when the window is resized — the whole
      main column kept its desktop width at phone size — and a grid reflows
      reliably at any width. */
-  #v-settings.view.on { display: grid; grid-template-columns: minmax(0, 1fr) 300px;
+  #v-settings.view.on { display: grid; grid-template-columns: minmax(0, 1fr) 360px;
     gap: 0 24px; align-content: start; }
   #v-settings > * { grid-column: 1; min-width: 0; }
   /* Written with the same #id + child reach as the rule above it. As a bare
      .previewDock it lost the specificity contest and the dock spanned the
      whole width, swallowing the form. */
-  #v-settings > .previewDock { grid-column: 2; grid-row: 1 / 99; position: sticky; top: 18px;
-    align-self: start; }
+  #v-settings > .previewDock { grid-column: 2; grid-row: 1 / 99; position: sticky; top: 118px;
+    align-self: start; background: var(--paper); border: 1px solid var(--mist); border-radius: 15px;
+    padding: 22px 22px 26px; }
   .previewLabel { font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
-    color: var(--muted); margin-bottom: 9px; }
+    color: var(--muted); margin-bottom: 13px; text-align: center; }
+
+  /* Two fields to a row where they are read together, one where they are not.
+     auto-fit means the row becomes a column on its own at narrow widths with
+     no extra media query to keep in sync. */
+  .fieldRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 18px; }
+  .colorField { display: flex; align-items: center; gap: 10px; }
+  .colorField input[type="text"] { flex: 1; min-width: 0; font-family: var(--mono); font-size: 13px; }
+  /* A native colour input, restyled to a plain swatch. Typing a hex still
+     works; this is for the clients who would rather point at a colour. */
+  .swatch { width: 38px; height: 38px; flex: none; padding: 0; border-radius: 9px; cursor: pointer;
+    border: 1px solid var(--mist); background: var(--card);
+    transition: transform .16s cubic-bezier(.2,.8,.3,1), box-shadow .16s; }
+  .swatch::-webkit-color-swatch-wrapper { padding: 3px; }
+  .swatch::-webkit-color-swatch { border: 0; border-radius: 6px; }
+  .swatch::-moz-color-swatch { border: 0; border-radius: 6px; }
+  .swatch:hover { transform: scale(1.06); box-shadow: 0 5px 14px -7px rgba(0,0,0,.55); }
+  .swatch:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
   .chatPrev { border-radius: 13px; overflow: hidden; background: var(--card); border: 1px solid var(--mist);
     box-shadow: 0 18px 38px -22px rgba(0,0,0,.5); font-size: 13px; }
   .cpTop { display: flex; align-items: center; gap: 9px; padding: 11px 12px;
@@ -331,10 +398,10 @@
   .cpFoot { text-align: center; font-size: 10px; color: var(--muted); padding: 7px; background: var(--card);
     border-top: 1px solid var(--mist); }
 
-  @media (max-width: 1100px) {
+  @media (max-width: 1180px) {
     #v-settings.view.on { grid-template-columns: minmax(0, 1fr); }
     #v-settings > .previewDock { grid-column: 1; grid-row: auto; position: static;
-      max-width: 340px; margin-bottom: 18px; }
+      max-width: 380px; margin-bottom: 18px; padding: 18px; }
   }
   @media (max-width: 860px) { .splitPanels { grid-template-columns: 1fr; } }
   /* One orchestrated arrival on first paint, then the page stays still. */
@@ -352,7 +419,10 @@
      and the board and the slips list rendering the same leads at once — so the
      rule is stated once, broadly, rather than patched per component. */
   .panel[hidden], .view[hidden], .slips[hidden], .desk[hidden],
-  .stats[hidden], .row[hidden], .acts[hidden] { display: none !important; }
+  .stats[hidden], .row[hidden], .acts[hidden],
+  .search[hidden], .barExport[hidden], .barTools[hidden],
+  .convSplit[hidden], .convList[hidden], .convPane[hidden],
+  .fieldRow[hidden], .colorField[hidden], .legend[hidden] { display: none !important; }
   .fontPrev { font-size: 17px; margin-top: 10px; padding: 13px 15px; background: var(--paper);
               border: 1px solid var(--mist); border-radius: 9px; }
   .loginPrev { max-width: 190px; max-height: 54px; object-fit: contain; object-position: left;
@@ -462,16 +532,69 @@
   .gapX:hover, .slipX:hover { opacity: 1; color: var(--clay); background: rgba(168,65,47,.08); }
   .slipX { position: absolute; top: 6px; right: 7px; }
   .slip:hover .slipX { opacity: .7; }
-  .conv { border: 1px solid var(--mist); border-radius: 9px; background: #fff; margin-bottom: 9px; overflow: hidden; }
-  .conv summary { padding: 11px 14px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-  .convX { background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 18px; line-height: 1;
-           padding: 2px 6px; border-radius: 6px; opacity: 0; transition: opacity .15s, color .15s; flex: none; }
-  .conv:hover .convX { opacity: .55; }
+  /* ---- conversations: list on the left, the chat itself on the right ----
+     The old accordion made you expand a chat to see any of it and pushed every
+     other chat down the page. Reading one transcript while keeping the list in
+     view is the whole job here, so it is a two-pane layout. */
+  .convHint { margin-bottom: 14px; }
+  .convSplit { display: grid; grid-template-columns: minmax(0, 0.82fr) minmax(0, 1fr);
+    gap: 18px; align-items: start; }
+  .convList { display: grid; gap: 9px; align-content: start; max-height: calc(100vh - 210px);
+    overflow-y: auto; padding-right: 3px; }
+  .conv { position: relative; border: 1px solid var(--mist); border-radius: 11px; background: var(--card);
+    padding: 12px 36px 12px 15px; cursor: pointer; text-align: left; width: 100%; font: inherit;
+    display: block; transition: border-color .18s, box-shadow .18s, transform .18s cubic-bezier(.2,.8,.3,1); }
+  .conv:hover { border-color: color-mix(in srgb, var(--brass) 55%, var(--mist)); transform: translateX(2px); }
+  .conv:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+  .conv .convQ { font-weight: 600; font-size: 14px; line-height: 1.35; display: block;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 76px; }
+  .conv .convMeta { color: var(--muted); font-size: 12.5px; margin-top: 3px; display: block; }
+  .conv .convWhen { position: absolute; top: 12px; right: 34px; font-family: var(--mono);
+    font-size: 11px; color: var(--clay); }
+  /* The selected row is marked by a bar and a tint, never by colour alone. */
+  .conv[aria-current="true"] { border-color: var(--brass); background: color-mix(in srgb, var(--brass) 7%, var(--card)); }
+  .conv[aria-current="true"]::before { content: ""; position: absolute; left: -1px; top: 10px; bottom: 10px;
+    width: 3px; border-radius: 0 3px 3px 0; background: var(--brass); }
+  .convX { position: absolute; top: 9px; right: 7px; background: none; border: 0; cursor: pointer;
+    color: var(--muted); font-size: 18px; line-height: 1; padding: 2px 6px; border-radius: 6px;
+    opacity: 0; transition: opacity .15s, color .15s; }
+  .conv:hover .convX, .conv:focus-within .convX { opacity: .55; }
   .convX:hover, .convX:focus-visible { opacity: 1; color: var(--clay); background: rgba(168,65,47,.08); }
-  .conv .turns { padding: 4px 14px 14px; border-top: 1px solid var(--mist); }
-  .turn { margin-top: 11px; }
-  .turn .q { font-weight: 500; }
-  .turn .a { color: var(--muted); margin-top: 2px; }
+
+  .convPane { border: 1px solid var(--mist); border-radius: 13px; background: var(--card);
+    padding: 17px 18px 14px; position: sticky; top: 108px; display: flex; flex-direction: column;
+    min-height: 320px; max-height: calc(100vh - 210px); }
+  .convPane .paneHead { display: flex; align-items: flex-start; gap: 12px; }
+  .convPane .paneHead h3 { font-family: var(--display); font-size: 16px; font-weight: 700;
+    letter-spacing: -.01em; line-height: 1.3; flex: 1; min-width: 0; }
+  .convPane .paneWhen { color: var(--muted); font-size: 12px; margin-top: 3px; font-family: var(--mono); }
+  .badge { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 99px; flex: none;
+    background: color-mix(in srgb, var(--brass) 18%, var(--card)); color: color-mix(in srgb, var(--brass) 72%, var(--ink));
+    border: 1px solid color-mix(in srgb, var(--brass) 40%, var(--card)); }
+  .badge.gap { background: #FBE9E6; color: #8A3324; border-color: #EBC3BC; }
+  .paneScroll { flex: 1; overflow-y: auto; margin: 15px -4px 0; padding: 2px 4px 4px;
+    display: flex; flex-direction: column; gap: 11px; }
+  /* Visitor on the left in the page's own paper, bot on the right in the
+     client's dashboard colour — the same two voices as the real widget. */
+  .bub { max-width: 82%; padding: 10px 13px; font-size: 13.5px; line-height: 1.5; border-radius: 13px;
+    overflow-wrap: anywhere; }
+  .bub.them { align-self: flex-start; background: var(--paper); border: 1px solid var(--mist);
+    border-bottom-left-radius: 4px; }
+  .bub.bot { align-self: flex-end; background: var(--pine); color: #fff; border-bottom-right-radius: 4px; }
+  .bub .bubFlag { display: block; margin-top: 6px; font-family: var(--mono); font-size: 9.5px;
+    letter-spacing: .1em; text-transform: uppercase; opacity: .75; }
+  @media (prefers-reduced-motion: no-preference) {
+    .bub { animation: bubIn .32s cubic-bezier(.2,.8,.3,1) backwards; }
+  }
+  @keyframes bubIn { from { opacity: 0; transform: translateY(7px); } }
+  .paneFoot { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    flex-wrap: wrap; margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--mist);
+    font-size: 12px; color: var(--muted); }
+  .paneFoot button { background: none; border: 0; padding: 0; font: inherit; font-size: 12px;
+    font-weight: 600; color: var(--pine); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+  .paneEmpty { margin: auto; text-align: center; color: var(--muted); font-size: 13.5px; padding: 20px; }
+  .paneEmpty svg { width: 34px; height: 34px; opacity: .3; display: block; margin: 0 auto 10px; }
+  .paneBack { display: none; }
   .flag { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--clay); }
   .kb { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--mist); font-size: 13px; }
   .kb small { color: var(--muted); display: block; }
@@ -548,13 +671,21 @@
       display: flex; align-items: center; gap: 9px; position: sticky; top: 0; z-index: 40;
       width: 100%; background: var(--pine); color: #fff; border: 0; padding: 13px 16px;
       font-size: 15px; font-weight: 600; font-family: var(--display); cursor: pointer;
-      margin: -22px -16px 18px; width: calc(100% + 32px);
+      margin: 0; width: 100%;
     }
     .menuBtn .ws { font-family: var(--body); font-weight: 400; font-size: 12.5px; opacity: .75; }
     .menuBtn .dot { margin-left: auto; background: var(--brass); color: var(--onBrass); font-size: 11px;
                     font-weight: 700; border-radius: 999px; padding: 2px 8px; font-family: var(--mono); }
 
-    .main { padding: 22px 16px 60px; max-width: 100%; }
+    .main { padding: 0 0 60px; max-width: 100%; }
+    .main > .view, .main > .suspendBar { padding: 0 16px; }
+    /* Under the menu button, which already sticks. Stacked, so the search box
+       and the export button get a full line each rather than being squeezed. */
+    .topbar { top: 48px; padding: 14px 16px; margin-bottom: 18px; gap: 12px; }
+    .topbar .barTitle { min-width: 100%; }
+    .barTools { width: 100%; }
+    .search { flex: 1; min-width: 0; }
+    .search input { width: 100%; }
     h1 { font-size: 22px; }
     .sub { font-size: 13.5px; }
 
@@ -586,8 +717,28 @@
     .crow .acts .assign { width: 100%; max-width: none; margin-top: 6px; }
 
     pre { font-size: 11px; padding: 11px; }
-    .conv summary { flex-direction: column; align-items: flex-start; gap: 4px; }
     .toast { left: 16px; right: 16px; transform: none; text-align: center; bottom: 16px; }
+  }
+
+  /* On a narrow screen the two panes become one: the list, then the transcript
+     over the top of it with a way back. Side by side at this width would give
+     each pane about 170px, which is no use for either. */
+  @media (max-width: 980px) {
+    .convSplit { grid-template-columns: minmax(0, 1fr); }
+    .convList { max-height: none; overflow: visible; }
+    .convPane { position: static; max-height: none; }
+    .convSplit:not(.reading) .convPane { display: none; }
+    .convSplit.reading .convList { display: none; }
+    /* "…beside it" is wrong once the transcript is on top of the list. */
+    #v-conversations:has(.convSplit.reading) .convHint { display: none; }
+    .convPane .paneBack { display: inline-flex; align-items: center; gap: 6px; background: none;
+      border: 0; padding: 0 0 11px; font: inherit; font-size: 13px; font-weight: 600;
+      color: var(--pine); cursor: pointer; }
+    .convPane .paneBack svg { width: 14px; height: 14px; }
+    .conv .convQ { white-space: normal; padding-right: 0; }
+    .conv .convWhen { position: static; display: block; margin-top: 6px; }
+    .conv { padding-right: 34px; }
+    .bub { max-width: 90%; }
   }
 
   /* Common phones are 390–430px wide and fit two stat cards comfortably, which
@@ -595,7 +746,8 @@
      numbers. Only genuinely narrow screens fall back to one column. */
   @media (max-width: 359px) {
     .stats { grid-template-columns: 1fr; }
-    .main { padding: 18px 12px 60px; }
+    .main > .view, .main > .suspendBar { padding: 0 12px; }
+    .topbar { padding: 12px; }
   }
 
   @media (max-width: 860px) {
@@ -652,7 +804,9 @@
       <button data-view="settings"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 5.1A2.9 2.9 0 1 0 8 10.9 2.9 2.9 0 0 0 8 5.1zm0 1.9a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/><path d="M7 .9h2l.3 1.9 1.4.6 1.6-1.1 1.4 1.4-1.1 1.6.6 1.4 1.9.3v2l-1.9.3-.6 1.4 1.1 1.6-1.4 1.4-1.6-1.1-1.4.6-.3 1.9H7l-.3-1.9-1.4-.6-1.6 1.1-1.4-1.4 1.1-1.6-.6-1.4L.9 9V7l1.9-.3.6-1.4-1.1-1.6 1.4-1.4 1.6 1.1 1.4-.6z" opacity=".4"/></svg><span>Settings</span></button>
       <button data-view="clients" id="navClients" hidden><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.6 14V4.2L7 1.9v12.1z"/><path d="M8.2 14V5.6L14.4 7v7z" opacity=".55"/></svg><span>My clients</span></button>
     </nav>
-    <div class="spacer" id="railFoot"></div>
+    <div class="spacer" id="railFoot">
+      <i class="liveDot" aria-hidden="true"></i>System status: <b id="railStatus">Online</b>
+    </div>
   </aside>
 
   <main class="main">
@@ -664,6 +818,28 @@
       <span class="ws" id="menuWs"></span>
       <span class="dot" id="menuDot" hidden></span>
     </button>
+
+    <header class="topbar">
+      <div class="barTitle">
+        <h1 id="barTitle">Overview</h1>
+        <p class="sub" id="barSub">&nbsp;</p>
+      </div>
+      <div class="barTools">
+        <div class="search">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <circle cx="7" cy="7" r="4.6"/><path d="m10.4 10.4 4 4" stroke-linecap="round"/></svg>
+          <input type="search" id="q" autocomplete="off" placeholder="Search leads, chats, knowledge…"
+                 aria-label="Search this section" />
+          <button class="clearQ" id="clearQ" type="button" aria-label="Clear search" hidden>&times;</button>
+        </div>
+        <button class="barExport" id="barExport" type="button">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M8 1.8v8.4M4.8 7l3.2 3.2L11.2 7M2.4 13.4h11.2"/></svg>
+          <span>Export data</span>
+        </button>
+      </div>
+    </header>
     <!-- OVERVIEW -->
     <section class="view on" id="v-overview">
       <h1>This month at a glance</h1>
@@ -723,10 +899,12 @@
 
     <!-- LEADS -->
     <section class="view" id="v-leads">
-      <div class="row" style="justify-content:space-between;align-items:center">
-        <h1>Leads</h1>
-        <button class="btn ghost" id="exportCsv">Download as spreadsheet</button>
-      </div>
+      <!-- h1 and its lead paragraph are direct children of the view, because
+           that is what the top bar mirrors. The old "Download as spreadsheet"
+           button lived here; the top bar's Export now does the same job on
+           every screen, so a second one would just be two ways to do one
+           thing. -->
+      <h1>Leads</h1>
       <p class="sub">Every visitor who left a contact detail. Call the new ones first.</p>
       <div class="viewSwap" role="group" aria-label="How to show leads">
         <button id="viewBoard" class="on" aria-pressed="true">Board</button>
@@ -740,7 +918,13 @@
     <section class="view" id="v-conversations">
       <h1>Conversations</h1>
       <p class="sub">The last 100 chats, newest first.</p>
-      <div id="convs"></div>
+      <p class="sub convHint">Pick a conversation to read the whole transcript beside it.</p>
+      <div class="convSplit" id="convSplit">
+        <div class="convList" id="convs"></div>
+        <!-- aria-live, because on a phone this pane slides in over the list and
+             the reader needs to be told which chat it just opened. -->
+        <section class="convPane" id="convPane" aria-live="polite" aria-label="Transcript"></section>
+      </div>
     </section>
 
     <!-- KNOWLEDGE -->
@@ -844,7 +1028,7 @@
       <!-- The preview tracks the fields as you type, so the client sees the
            change before saving instead of saving and then going to look. -->
       <aside class="previewDock" id="previewDock">
-        <div class="previewLabel">Live preview</div>
+        <div class="previewLabel">Live chat widget preview</div>
         <div class="chatPrev" id="chatPrev">
           <header class="cpTop">
             <span class="cpAvatar" id="cpAvatar"></span>
@@ -858,6 +1042,8 @@
         </div>
       </aside>
       <div class="panel">
+        <h2>Bot settings &amp; branding</h2>
+        <p class="sub">What the visitor sees first, and the colours everything is drawn in.</p>
         <div class="field"><label for="sBotName">Bot name</label><input type="text" id="sBotName" /></div>
         <div class="field"><label for="sGreeting">Opening line</label><input type="text" id="sGreeting" /></div>
         <div class="field">
@@ -870,29 +1056,50 @@
           <div class="hint">Leave empty to show &ldquo;Front Desk&rdquo;. Set it to the client&rsquo;s business name, or your agency&rsquo;s.</div>
           <input type="text" id="sBrandName" placeholder="Karma Dentistry" />
         </div>
-        <div class="field">
-          <label for="sDashAccent">Dashboard colour</label>
-          <div class="hint">Leave empty to match the chat widget colour.</div>
-          <input type="text" id="sDashAccent" placeholder="#1B3A2F" />
+
+        <!-- The three colours sit together because they are judged together:
+             picking a dashboard colour without seeing the highlight beside it
+             is how you end up with gold on mustard. -->
+        <div class="fieldRow">
+          <div class="field">
+            <label for="sDashAccent">Dashboard colour</label>
+            <div class="hint">Leave empty to match the chat widget.</div>
+            <div class="colorField">
+              <input type="color" class="swatch" id="sDashAccentPick" aria-label="Pick the dashboard colour" />
+              <input type="text" id="sDashAccent" placeholder="#1B3A2F" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="sDashHighlight">Highlight colour</label>
+            <div class="hint">Selected menu item, headline figure and charts.</div>
+            <div class="colorField">
+              <input type="color" class="swatch" id="sDashHighlightPick" aria-label="Pick the highlight colour" />
+              <input type="text" id="sDashHighlight" placeholder="#B8862B" />
+            </div>
+          </div>
         </div>
         <div class="field">
-          <label for="sDashHighlight">Highlight colour</label>
-          <div class="hint">Used for the selected menu item and the headline figure. Leave empty for the default gold.</div>
-          <input type="text" id="sDashHighlight" placeholder="#B8862B" />
+          <label for="sAccent">Chat widget colour</label>
+          <div class="hint">The header and send button on the visitor&rsquo;s side. Watch the preview as you change it.</div>
+          <div class="colorField">
+            <input type="color" class="swatch" id="sAccentPick" aria-label="Pick the chat widget colour" />
+            <input type="text" id="sAccent" placeholder="#1B3A2F" />
+          </div>
         </div>
-        <div class="field">
-          <label for="sDashLogo">Dashboard logo</label>
-          <div class="hint">Shown at the top of this sidebar. A wide logo works well here. Leave empty to show the name as text.</div>
-          <input type="text" id="sDashLogo" placeholder="https://example.com/full-logo.png" />
-          <div id="dashLogoPreview"></div>
+        <div class="fieldRow">
+          <div class="field">
+            <label for="sDashLogo">Dashboard logo</label>
+            <div class="hint">Top of the sidebar. A wide logo works well. Empty shows the name as text.</div>
+            <input type="text" id="sDashLogo" placeholder="https://example.com/full-logo.png" />
+            <div id="dashLogoPreview"></div>
+          </div>
+          <div class="field">
+            <label for="sLogo">Chat avatar</label>
+            <div class="hint">The small square in the chat header. Ideally 128&times;128 or larger.</div>
+            <input type="text" id="sLogo" placeholder="https://example.com/icon.png" />
+            <div id="logoPreview"></div>
+          </div>
         </div>
-        <div class="field">
-          <label for="sLogo">Chat avatar</label>
-          <div class="hint">The small square image in the chat header. A logo mark or icon, ideally 128&times;128 or larger.</div>
-          <input type="text" id="sLogo" placeholder="https://example.com/icon.png" />
-          <div id="logoPreview"></div>
-        </div>
-        <div class="field"><label for="sAccent">Accent colour</label><input type="text" id="sAccent" placeholder="#1B3A2F" /></div>
         <div class="field">
           <label for="sQuick">Opening menu</label>
           <div class="hint">Tappable options shown with the greeting, one per line. Most visitors do not know what to ask, so lead with the actions worth having &mdash; booking first. Leave empty for a plain text box.</div>
@@ -1114,12 +1321,98 @@ document.querySelectorAll('.nav button').forEach((b) => {
     // Label the mobile header with the section, and get the drawer out of the way.
     $('#menuLabel').textContent = b.textContent.replace(/\d+\s*$/, '').trim();
     drawer(false);
+    syncTopbar();
+    // Switching section while scrolled halfway down used to drop you into the
+    // middle of the new one. The top bar stays put either way, so the jump was
+    // easy to miss and hard to explain.
+    window.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     if (b.dataset.view === 'leads') loadLeads();
-    if (b.dataset.view === 'conversations') loadConvs();
+    if (b.dataset.view === 'conversations') enterConvs();
     if (b.dataset.view === 'knowledge') loadKb();
     if (b.dataset.view === 'clients') loadClients();
   };
 });
+
+// ---- the top bar ----
+//
+// Its title is a mirror of the active section's own <h1> and lead paragraph,
+// which stay in the markup (hidden) so the document keeps a real heading for a
+// screen reader and no new section has to be registered in a lookup table here.
+function activeView() { return $('.view.on'); }
+
+function syncTopbar() {
+  const v = activeView();
+  if (!v) return;
+  const h = v.querySelector(':scope > h1');
+  const sub = h?.nextElementSibling?.classList.contains('sub') ? h.nextElementSibling : null;
+  $('#barTitle').textContent = h?.textContent.trim() || 'Dashboard';
+  $('#barSub').innerHTML = sub ? sub.innerHTML : '&nbsp;';
+
+  // The search box only earns its place where there is a list to narrow.
+  const id = v.id.replace('v-', '');
+  const searchable = ['leads', 'conversations', 'knowledge'].includes(id);
+  $('#q').closest('.search').hidden = !searchable;
+  $('#q').placeholder = id === 'leads' ? 'Search leads…'
+    : id === 'conversations' ? 'Search chats…'
+    : 'Search knowledge…';
+  const exportable = ['leads', 'conversations'].includes(id);
+  $('#barExport').hidden = !exportable;
+  $('#barExport').querySelector('span').textContent = id === 'conversations' ? 'Export chats' : 'Export leads';
+}
+
+// ---- search ----
+//
+// One box that narrows whichever list is on screen. Each view paints itself
+// from its own cache, so filtering costs no request and the term survives a
+// refresh of the data underneath it.
+let searchQ = '';
+function searchTerm() { return searchQ; }
+
+function runSearch() {
+  const v = activeView();
+  if (!v) return;
+  $('#clearQ').hidden = !searchQ;
+  const id = v.id.replace('v-', '');
+  if (id === 'conversations') paintConvList();
+  else if (id === 'leads') paintLeads();
+  else if (id === 'knowledge') paintKb();
+}
+
+let searchTimer = null;
+$('#q').addEventListener('input', (e) => {
+  searchQ = e.target.value.trim().toLowerCase();
+  // Debounced: a 900-slip list repainting on every keystroke stutters.
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(runSearch, 120);
+});
+$('#q').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { e.target.value = ''; searchQ = ''; runSearch(); }
+});
+$('#clearQ').onclick = () => { $('#q').value = ''; searchQ = ''; runSearch(); $('#q').focus(); };
+
+$('#barExport').onclick = () => {
+  const id = activeView()?.id.replace('v-', '');
+  if (id === 'conversations') return exportConvs();
+  exportLeadsCsv();
+};
+
+// Every conversation in one file, so a client can hand the lot to whoever is
+// following up instead of saving them one at a time.
+function exportConvs() {
+  if (!convCache.length) return toast('No conversations to export yet.');
+  const out = convCache.map((c) => {
+    const head = [
+      `Conversation: ${convTitle(c)}`,
+      `Started: ${new Date(c.startedAt).toLocaleString()}`,
+      `Outcome: ${convResolved(c) ? 'answered by the bot' : 'needs follow-up'}`,
+      c.visitor ? `Visitor IP: ${c.visitor}` : '',
+    ].filter(Boolean).join('\n');
+    const body = c.turns.map((t) => `Visitor: ${t.q}\nBot: ${t.a}`).join('\n\n');
+    return `${head}\n\n${body}`;
+  }).join('\n\n========================================\n\n');
+  saveFile(`conversations-${new Date().toISOString().slice(0, 10)}.txt`, out, 'text/plain');
+  toast(`Exported ${convCache.length} conversation${convCache.length === 1 ? '' : 's'}.`);
+}
 
 $('#signOut').onclick = async () => {
   await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
@@ -1128,7 +1421,15 @@ $('#signOut').onclick = async () => {
 $('#tenant').addEventListener('change', () => {
   tenantId = $('#tenant').value;
   localStorage.setItem('ws', tenantId);
+  // A different workspace means different everything. Drop the caches, or the
+  // section on screen keeps showing the previous client's data until the poll
+  // comes round — which, on Conversations, is somebody else's transcripts.
+  convCache = []; convSig = ''; openConvId = null; leadCache = []; kbCache = [];
   loadOverview(true);   // different workspace — the form must repopulate
+  const v = activeView()?.id.replace('v-', '');
+  if (v === 'leads') loadLeads();
+  if (v === 'conversations') enterConvs();
+  if (v === 'knowledge') loadKb();
 });
 
 // A refresh that lands on an empty sidebar looks like lost data. One transient
@@ -1198,6 +1499,7 @@ async function loadOverview(force = false) {
     overview = await api(`/api/admin/${tenantId}/overview`);
     const o = overview;
     $('#tenantLine').textContent = `${o.name} — ${o.chunks} passages in the knowledge base`;
+    syncTopbar();   // the overview's lead line is only known once this returns
     $('#leadCount').textContent = o.newLeads ? o.newLeads : '';
     $('#menuWs').textContent = o.name;
     $('#menuDot').hidden = !o.newLeads;
@@ -1221,6 +1523,11 @@ async function loadOverview(force = false) {
       : `<div class="empty"><strong>Nothing missed yet</strong>The bot found an answer for every question it received.</div>`;
     $('#suspendBar').hidden = !o.suspended;
     $('#suspendMsg').textContent = o.suspendedMessage || '';
+    // The rail footer reports the bot, not the dashboard: a client looking for
+    // reassurance wants to know their chatbot is answering, and the dashboard
+    // being up tells them nothing about that.
+    $('#railStatus').textContent = o.suspended ? 'Paused' : 'Online';
+    $('#railFoot').classList.toggle('down', Boolean(o.suspended));
     applyBranding(o.settings);
     document.querySelectorAll('[data-gap]').forEach((b) => {
       b.onclick = async () => {
@@ -1426,13 +1733,30 @@ function paintLeadView() {
 $('#viewBoard').onclick = () => { boardMode = true; localStorage.setItem('leadsView', 'board'); paintLeadView(); };
 $('#viewCards').onclick = () => { boardMode = false; localStorage.setItem('leadsView', 'cards'); paintLeadView(); };
 
+let leadCache = [];
+
 async function loadLeads() {
   if (!tenantId) return;
-  const leads = await api(`/api/admin/${tenantId}/leads`);
+  leadCache = await api(`/api/admin/${tenantId}/leads`);
+  paintLeads();
+}
+
+// Split out from the fetch so the search box can repaint from the cache
+// without going back to the server on every keystroke.
+function paintLeads() {
+  const q = searchTerm();
+  // Searched across everything the client can see on a slip, so looking for a
+  // phone number, a name or what they asked about all land somewhere.
+  const leads = q
+    ? leadCache.filter((l) => [l.name, l.phone, l.email, l.intent, l.firstQuestion, l.note]
+        .join(' ').toLowerCase().includes(q))
+    : leadCache;
   renderBoard(leads);
   paintLeadView();
   $('#slips').innerHTML = leads.length ? leads.map((l) => slip(l)).join('')
-    : `<div class="empty" style="grid-column:1/-1"><strong>No leads yet</strong>They appear here the moment a visitor leaves a phone number or email.</div>`;
+    : `<div class="empty" style="grid-column:1/-1"><strong>${q ? 'No lead matches that' : 'No leads yet'}</strong>${
+        q ? 'Try a name, a number or part of what they asked.'
+          : 'They appear here the moment a visitor leaves a phone number or email.'}</div>`;
   document.querySelectorAll('[data-del]').forEach((b) => {
     b.onclick = async () => {
       if (!confirm('Delete this lead permanently?')) return;
@@ -1489,42 +1813,206 @@ function slip(l, onBoard = false) {
 }
 
 // ---- conversations ----
-async function loadConvs() {
-  if (!tenantId) return;
-  const convs = await api(`/api/admin/${tenantId}/conversations`);
-  $('#convs').innerHTML = convs.length ? convs.map((c) => `
-    <details class="conv">
-      <summary><span>${c.turns.length} message${c.turns.length === 1 ? '' : 's'} — ${escapeHtml(c.turns[0]?.q || '')}</span>
-      <span class="flag">${new Date(c.startedAt).toLocaleDateString()}</span>
-      <button class="convX" data-delconv="${escapeHtml(c.id)}" aria-label="Delete this conversation" title="Delete">&times;</button></summary>
-      <div class="turns">${c.turns.map((t) => `
-        <div class="turn"><div class="q">${escapeHtml(t.q)}</div><div class="a">${escapeHtml(t.a)}</div>
-        ${t.grounded === false ? '<div class="flag">no answer found</div>' : ''}</div>`).join('')}</div>
-    </details>`).join('')
-    : `<div class="empty"><strong>No conversations yet</strong>Install the widget and the first chats will show up here.</div>`;
+//
+// The list and the transcript are two panes of one view. The list holds the
+// loaded conversations so opening one is instant and costs no request.
+let convCache = [];
+let openConvId = null;
 
-  document.querySelectorAll('[data-delconv]').forEach((b) => {
-    b.onclick = async (e) => {
-      // Inside a <summary>, so stop the click from toggling the panel open.
-      e.preventDefault(); e.stopPropagation();
-      if (!confirm('Delete this conversation? Any lead it captured is kept.')) return;
-      try {
-        await api(`/api/admin/${tenantId}/conversations/${b.dataset.delconv}`, { method: 'DELETE' });
-        loadConvs(); loadOverview();
-      } catch (err) { toast(err.message); }
-    };
-  });
+function convTitle(c) {
+  return (c.turns[0]?.q || '').trim() || 'Chat with no question';
 }
 
+// "Resolved" means the bot answered every question it was asked from the
+// knowledge base. One ungrounded turn is a gap worth a human looking at, so it
+// is reported rather than averaged away.
+function convResolved(c) {
+  return !c.turns.some((t) => t.grounded === false || t.handoff);
+}
+
+// Narrow screens show one pane at a time, so arriving at this section must
+// land on the list. Without this you tap Conversations and get last week's
+// transcript with the list nowhere in sight.
+const onePane = () => matchMedia('(max-width: 980px)').matches;
+
+function enterConvs() {
+  if (onePane()) openConvId = null;
+  convSig = '';          // arriving here always repaints, poll or no poll
+  loadConvs();
+}
+
+// Resizing across the breakpoint has the same problem in reverse: a transcript
+// opened on a wide screen would swallow the list when the window narrows.
+matchMedia('(max-width: 980px)').addEventListener('change', (e) => {
+  if (!e.matches || !openConvId) return;
+  openConvId = null;
+  if ($('#v-conversations')?.classList.contains('on')) { paintConvList(); paintConvPane(null); }
+});
+
+let convSig = '';
+
+async function loadConvs() {
+  if (!tenantId) return;
+  const fresh = await api(`/api/admin/${tenantId}/conversations`);
+  // This runs on a 20-second poll. Repainting unconditionally would throw away
+  // the reader's scroll position in a long transcript every 20 seconds, so
+  // nothing is redrawn unless something actually changed.
+  const sig = fresh.map((c) => `${c.id}:${c.turns.length}`).join('|');
+  if (sig === convSig && convCache.length) return;
+  convSig = sig;
+  convCache = fresh;
+  paintConvList();
+  // Keep whatever was open if it still exists, otherwise start fresh.
+  if (openConvId && convCache.some((c) => c.id === openConvId)) paintConvPane(openConvId);
+  else { openConvId = null; paintConvPane(null); }
+}
+
+function paintConvList() {
+  const q = searchTerm();
+  const rows = q
+    ? convCache.filter((c) => (convTitle(c) + ' ' + c.turns.map((t) => t.q + ' ' + t.a).join(' ')).toLowerCase().includes(q))
+    : convCache;
+
+  if (!convCache.length) {
+    $('#convs').innerHTML = `<div class="empty"><strong>No conversations yet</strong>Install the widget and the first chats will show up here.</div>`;
+    return;
+  }
+  if (!rows.length) {
+    $('#convs').innerHTML = `<p class="noHits">No conversation mentions &ldquo;${escapeHtml(q)}&rdquo;.</p>`;
+    return;
+  }
+  $('#convs').innerHTML = rows.map((c) => `
+    <div class="conv" role="button" tabindex="0" data-conv="${escapeHtml(c.id)}"
+         aria-current="${c.id === openConvId}">
+      <span class="convQ">${escapeHtml(convTitle(c))}</span>
+      <span class="convMeta">${c.turns.length} message${c.turns.length === 1 ? '' : 's'} exchanged</span>
+      <span class="convWhen">${new Date(c.startedAt).toLocaleDateString()}</span>
+      <button class="convX" data-delconv="${escapeHtml(c.id)}" aria-label="Delete this conversation" title="Delete">&times;</button>
+    </div>`).join('');
+}
+
+function paintConvPane(id) {
+  const pane = $('#convPane'), split = $('#convSplit');
+  const c = convCache.find((x) => x.id === id);
+  split.classList.toggle('reading', Boolean(c));
+  if (!c) {
+    pane.innerHTML = `<div class="paneEmpty">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 3.2h12v7.4H6.6L3.4 13.4v-2.8H2z"/></svg>
+      Pick a conversation on the left to read it here.</div>`;
+    return;
+  }
+  const ok = convResolved(c);
+  const started = new Date(c.startedAt);
+  pane.innerHTML = `
+    <button class="paneBack" type="button" id="paneBack">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 3 4.5 8l5 5"/></svg>
+      All conversations
+    </button>
+    <div class="paneHead">
+      <div>
+        <h3>${escapeHtml(convTitle(c))}</h3>
+        <p class="paneWhen">${started.toLocaleDateString()} &middot; ${c.turns.length} message${c.turns.length === 1 ? '' : 's'}</p>
+      </div>
+      <span class="badge ${ok ? '' : 'gap'}">${ok ? 'Bot resolved' : 'Needs follow-up'}</span>
+    </div>
+    <div class="paneScroll">
+      ${c.turns.map((t, i) => `
+        <div class="bub them" style="animation-delay:${Math.min(i * 60, 420)}ms">${escapeHtml(t.q)}</div>
+        <div class="bub bot" style="animation-delay:${Math.min(i * 60 + 30, 450)}ms">${escapeHtml(t.a)}
+          ${t.grounded === false ? '<span class="bubFlag">no answer found</span>' : ''}</div>`).join('')}
+    </div>
+    <div class="paneFoot">
+      <span>${c.visitor ? 'Visitor IP: ' + escapeHtml(c.visitor) : 'Visitor not recorded'}</span>
+      <button type="button" id="dlTranscript">Download transcript</button>
+    </div>`;
+
+  $('#paneBack').onclick = () => { openConvId = null; paintConvList(); paintConvPane(null); };
+  $('#dlTranscript').onclick = () => downloadTranscript(c);
+}
+
+// Plain text, because a transcript gets pasted into an email or a case note far
+// more often than it gets opened in a spreadsheet.
+function downloadTranscript(c) {
+  const lines = [
+    `Conversation — ${convTitle(c)}`,
+    `Started: ${new Date(c.startedAt).toLocaleString()}`,
+    `Messages: ${c.turns.length}`,
+    `Outcome: ${convResolved(c) ? 'answered by the bot' : 'needs follow-up'}`,
+    c.visitor ? `Visitor IP: ${c.visitor}` : '',
+    '', '----------------------------------------', '',
+  ].filter(Boolean);
+  for (const t of c.turns) {
+    lines.push(`Visitor: ${t.q}`, `Bot: ${t.a}${t.grounded === false ? '  [no answer found]' : ''}`, '');
+  }
+  const stamp = new Date(c.startedAt).toISOString().slice(0, 10);
+  saveFile(`transcript-${stamp}-${c.id.slice(0, 6)}.txt`, lines.join('\n'), 'text/plain');
+}
+
+function saveFile(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type: `${type};charset=utf-8` }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+$('#convs').addEventListener('click', async (e) => {
+  const del = e.target.closest('[data-delconv]');
+  if (del) {
+    e.stopPropagation();
+    if (!confirm('Delete this conversation? Any lead it captured is kept.')) return;
+    try {
+      await api(`/api/admin/${tenantId}/conversations/${del.dataset.delconv}`, { method: 'DELETE' });
+      if (openConvId === del.dataset.delconv) openConvId = null;
+      loadConvs(); loadOverview();
+    } catch (err) { toast(err.message); }
+    return;
+  }
+  const row = e.target.closest('[data-conv]');
+  if (!row) return;
+  openConvId = row.dataset.conv;
+  paintConvList();
+  paintConvPane(openConvId);
+});
+
+// Enter and Space on a focused row, so the list works without a mouse.
+$('#convs').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const row = e.target.closest('[data-conv]');
+  if (!row) return;
+  e.preventDefault();
+  openConvId = row.dataset.conv;
+  paintConvList();
+  paintConvPane(openConvId);
+  $('#convPane').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+});
+
 // ---- knowledge ----
+let kbCache = [];
+
 async function loadKb() {
   if (!tenantId) return;
-  const items = await api(`/api/admin/${tenantId}/knowledge`);
-  $('#kbCount').textContent = items.length + ' stored';
+  kbCache = await api(`/api/admin/${tenantId}/knowledge`);
+  paintKb();
+}
+
+function paintKb() {
+  const q = searchTerm();
+  const items = q
+    ? kbCache.filter((c) => `${c.title || ''} ${c.preview || ''} ${c.url || ''}`.toLowerCase().includes(q))
+    : kbCache;
+  $('#kbCount').textContent = q ? `${items.length} of ${kbCache.length}` : `${kbCache.length} stored`;
+  if (!kbCache.length) {
+    $('#kbList').innerHTML = `<div class="empty"><strong>Nothing stored yet</strong>Read a website above, or paste your own notes.</div>`;
+    return;
+  }
+  // Capped at 100 rows: the list is for spot-checking what the bot knows, and
+  // a client with 900 passages wants the search box, not nine screens of text.
   $('#kbList').innerHTML = items.length ? items.slice(0, 100).map((c) => `
     <div class="kb"><div><strong>${escapeHtml(c.title || 'Untitled')}</strong><small>${escapeHtml(c.preview)}…</small></div>
     ${c.url ? `<a href="${c.url}" target="_blank" rel="noopener" class="flag">open</a>` : '<span class="flag">note</span>'}</div>`).join('')
-    : `<div class="empty"><strong>Nothing stored yet</strong>Read a website above, or paste your own notes.</div>`;
+    : `<p class="noHits">Nothing stored mentions &ldquo;${escapeHtml(q)}&rdquo;. The bot would not be able to answer that either.</p>`;
 }
 
 $('#crawlBtn').onclick = async () => {
@@ -1598,6 +2086,65 @@ document.addEventListener('input', (e) => {
   if ($('#v-settings')?.contains(e.target)) paintPreview();
 });
 
+// ---- colour swatches ----
+//
+// The swatch and the hex box are two views of one value, so each follows the
+// other. The text field stays authoritative: a client who has a brand hex can
+// paste it, and <input type="color"> only ever holds a 6-digit hex, so writing
+// back from the swatch would quietly rewrite an #RGB shorthand or an 8-digit
+// value with alpha. It is only written back when the client actually drags it.
+const COLOR_PAIRS = [
+  ['#sDashAccent', '#sDashAccentPick', '#1B3A2F'],
+  ['#sDashHighlight', '#sDashHighlightPick', '#B8862B'],
+  ['#sAccent', '#sAccentPick', '#1B3A2F'],
+];
+
+function syncSwatches() {
+  for (const [textSel, pickSel, fallback] of COLOR_PAIRS) {
+    const text = $(textSel), pick = $(pickSel);
+    if (!text || !pick) continue;
+    const v = text.value.trim();
+    // A colour input rejects anything but #rrggbb, so shorthand is expanded and
+    // an alpha channel trimmed purely for the swatch's benefit.
+    pick.value = normaliseHex(v) || normaliseHex(text.placeholder) || fallback;
+  }
+}
+
+function normaliseHex(s) {
+  const m = String(s || '').trim().match(/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+  if (!m) return '';
+  let h = m[1];
+  if (h.length === 3 || h.length === 4) h = h.slice(0, 3).split('').map((c) => c + c).join('');
+  return '#' + h.slice(0, 6).toLowerCase();
+}
+
+for (const [textSel, pickSel] of COLOR_PAIRS) {
+  $(pickSel)?.addEventListener('input', () => {
+    const text = $(textSel);
+    text.value = $(pickSel).value.toUpperCase();
+    settingsTouched = true;
+    paintPreview();
+    // Dashboard colours are applied as they are dragged, so the client sees
+    // the whole page in the colour rather than guessing from one swatch.
+    livePreviewBrand();
+  });
+  $(textSel)?.addEventListener('input', () => { syncSwatches(); livePreviewBrand(); });
+}
+
+// Paints the chrome from the unsaved fields. Saving is what makes it stick;
+// this is only so the choice can be judged before committing to it.
+function livePreviewBrand() {
+  const root = document.documentElement.style;
+  const accent = normaliseHex($('#sDashAccent')?.value);
+  const highlight = normaliseHex($('#sDashHighlight')?.value);
+  if (accent) { root.setProperty('--pine', accent); root.setProperty('--onPine', readableOn(accent)); }
+  if (highlight) {
+    root.setProperty('--brass', highlight);
+    root.setProperty('--onBrass', readableOn(highlight));
+    root.setProperty('--c1', chartHue(highlight));
+  }
+}
+
 function settingsBusy() {
   const view = $('#v-settings');
   if (!view) return false;
@@ -1639,6 +2186,7 @@ function fillSettings(s, publicKey, force = false) {
   markNotifySaved();
   loadChannels();
   paintPreview();
+  syncSwatches();
   $('#sOrigins').value = (s.allowedOrigins || []).join('\n');
   const fields = s.leadFields || [];
   document.querySelectorAll('.leadField').forEach((c) => { c.checked = fields.includes(c.value); });
@@ -2528,13 +3076,22 @@ async function loadStatus() {
   } catch { /* not an owner, or key auth — no banner */ }
 }
 
-$('#exportCsv').onclick = async () => {
-  const res = await fetch(`${API}/api/admin/${tenantId}/leads.csv`, { credentials: 'same-origin' });
-  if (!res.ok) return toast('Could not export.');
-  const url = URL.createObjectURL(await res.blob());
-  Object.assign(document.createElement('a'), { href: url, download: `${tenantId}-leads.csv` }).click();
-  URL.revokeObjectURL(url);
-};
+async function exportLeadsCsv() {
+  if (!tenantId) return;
+  const btn = $('#barExport');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API}/api/admin/${tenantId}/leads.csv`, { credentials: 'same-origin' });
+    if (!res.ok) return toast('Could not export.');
+    const url = URL.createObjectURL(await res.blob());
+    const a = Object.assign(document.createElement('a'), { href: url, download: `${tenantId}-leads.csv` });
+    document.body.appendChild(a); a.click(); a.remove();
+    // Revoked on a timer rather than immediately: Safari cancels the download
+    // if the blob is released in the same tick as the click.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (e) { toast(e.message); }
+  btn.disabled = false;
+}
 
 // Poll while the tab is visible. Cheap — these routes only read local JSON.
 setInterval(() => {
@@ -2554,6 +3111,7 @@ restoreBrand();   // paint the client's brand before the first request returns
   $('#whoName').textContent = me.email;
   $('#navClients').hidden = me.role !== 'owner';
   $('#pwPanel').hidden = me.usingKey;
+  syncTopbar();
   await loadTenants();
 })();
 </script>

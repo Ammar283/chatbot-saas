@@ -175,7 +175,7 @@ app.post('/api/chat', async (req, res) => {
     const cached = cacheLookup(tenant, message);
     if (cached && (history.length === 0 || selfContained(message, lastBotTurn))) {
       store.recordUsage(tenant, { cached: true });
-      logTurn(tenant, convId, message, cached, { cached: true });
+      logTurn(tenant, convId, message, cached, { cached: true }, req.ip);
       store.save(tenant.id);
       return res.json({ answer: cached, conversationId: convId, suggestions: [], cached: true });
     }
@@ -289,7 +289,7 @@ app.post('/api/chat', async (req, res) => {
       model: out.model,
       // A name or phone number is not a question the bot failed to answer.
       leadTurn: gaveDetails || asking !== null,
-    });
+    }, req.ip);
     store.save(tenant.id);
 
     // The bot could not answer, and has no way to reach this visitor.
@@ -675,13 +675,29 @@ function mergeLead(tenant, convId, fields) {
   return lead;
 }
 
-function logTurn(tenant, convId, question, answer, meta = {}) {
+// Only ever the first half of the address. It is enough for a client to tell
+// two visitors apart or spot a flood from one machine, and it is not a
+// personal identifier, so there is nothing here worth leaking or worth a
+// deletion request. The full address is never written to disk.
+function maskIp(ip) {
+  const raw = String(ip || '').replace(/^::ffff:/, '');
+  if (!raw) return '';
+  if (raw.includes(':')) {
+    const parts = raw.split(':').filter(Boolean);
+    return parts.length < 2 ? '' : `${parts[0]}:${parts[1]}:xx:xx`;
+  }
+  const parts = raw.split('.');
+  return parts.length === 4 ? `${parts[0]}.${parts[1]}.xx.xx` : '';
+}
+
+function logTurn(tenant, convId, question, answer, meta = {}, ip = '') {
   let conv = tenant.conversations.find((c) => c.id === convId);
   if (!conv) {
     conv = { id: convId, startedAt: new Date().toISOString(), turns: [] };
     tenant.conversations.unshift(conv);
     if (tenant.conversations.length > 500) tenant.conversations.length = 500;
   }
+  if (!conv.visitor && ip) conv.visitor = maskIp(ip);
   conv.turns.push({ q: question, a: answer, at: new Date().toISOString(), ...meta });
   conv.lastAt = new Date().toISOString();
 }
