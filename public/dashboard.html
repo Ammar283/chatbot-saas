@@ -1445,6 +1445,17 @@ matchMedia('(min-width: 861px)').addEventListener('change', (e) => { if (e.match
 // ---- navigation ----
 document.querySelectorAll('.nav button').forEach((b) => {
   b.onclick = () => {
+    // Scroll to the top BEFORE swapping the view, and instantly.
+    //
+    // Settings is several screens tall and Overview is not. Switching while
+    // scrolled down made the document shrink underneath the scroll position,
+    // so the browser clamped to the new maximum — you landed part-way down the
+    // new section and then watched it slide up to the top, with the sidebar
+    // appearing to tear as the two settled. Resetting first means the swap
+    // always happens at scroll 0 and there is nothing to clamp or animate.
+    // Instant, not smooth, for the same reason: an animation that outlives the
+    // content it was started on has nothing coherent to land on.
+    window.scrollTo({ top: 0, behavior: 'auto' });
     document.querySelectorAll('.nav button').forEach((x) => x.setAttribute('aria-current', 'false'));
     b.setAttribute('aria-current', 'true');
     document.querySelectorAll('.view').forEach((v) => v.classList.remove('on'));
@@ -1453,10 +1464,6 @@ document.querySelectorAll('.nav button').forEach((b) => {
     $('#menuLabel').textContent = b.textContent.replace(/\d+\s*$/, '').trim();
     drawer(false);
     syncTopbar();
-    // Switching section while scrolled halfway down used to drop you into the
-    // middle of the new one. The top bar stays put either way, so the jump was
-    // easy to miss and hard to explain.
-    window.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     if (b.dataset.view === 'leads') loadLeads();
     if (b.dataset.view === 'conversations') enterConvs();
     if (b.dataset.view === 'knowledge') loadKb();
