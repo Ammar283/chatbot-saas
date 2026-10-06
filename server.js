@@ -979,9 +979,20 @@ app.get('/api/admin/:tenantId/overview', requireAdmin, requireTenant, (req, res)
   // not worth chasing. Dismissed ones stay dismissed so the list keeps meaning
   // something rather than becoming a wall the client scrolls past.
   const dismissed = new Set(t.dismissedGaps || []);
-  const unanswered = recent
-    .flatMap((c) => c.turns.filter(isKnowledgeGap).map((x) => x.q))
-    .filter((q) => !dismissed.has(q));
+  // Counted, not just listed. A question asked eight times and one asked once
+  // are not the same job, and the client should be able to see which is which
+  // before deciding what to write an answer for.
+  const gapCounts = new Map();
+  for (const c of recent) {
+    for (const turn of c.turns.filter(isKnowledgeGap)) {
+      if (dismissed.has(turn.q)) continue;
+      gapCounts.set(turn.q, (gapCounts.get(turn.q) || 0) + 1);
+    }
+  }
+  const unanswered = [...gapCounts.entries()]
+    .map(([q, count]) => ({ q, count }))
+    .sort((a, b) => b.count - a.count || a.q.localeCompare(b.q))
+    .slice(0, 20);
 
   res.json({
     name: t.name,
@@ -1008,7 +1019,7 @@ app.get('/api/admin/:tenantId/overview', requireAdmin, requireTenant, (req, res)
     range: dailyTrend(t, Math.min(90, Math.max(7, Number(req.query.days) || 30))),
     // What visitors actually came for, counted from the leads themselves.
     intents: topIntents(t, 5),
-    unanswered: [...new Set(unanswered)].slice(0, 20),
+    unanswered,
   });
 });
 

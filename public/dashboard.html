@@ -6,7 +6,11 @@
 <title>Front Desk — chatbot console</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<!-- One typeface for the whole dashboard. Headings are separated from body
+     text by weight and size rather than by a second family, which is what
+     makes an interface read as one system instead of two stuck together.
+     600 and 700 carry the headings, 400/500 the body. -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
   :root {
     --ink:    #171A17;
@@ -18,8 +22,11 @@
     --mist:   #D8DDD3;
     --muted:  #5F6860;
     --slip:   #F6E9D8;
-    --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
-    --body: "Inter", ui-sans-serif, system-ui, sans-serif;
+    /* Both point at Inter now. The token stays so every heading rule did not
+       have to be rewritten, and so a client font could be swapped in later at
+       one place rather than forty. */
+    --display: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --body: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
     --onBrass: #1A1206;
     --onPine: #FFFFFF;
     /* Chart series. --c1 leads in the client's highlight colour, --c2 follows
@@ -54,12 +61,27 @@
     margin-bottom: 8px;
 }
 
-  .shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
-  .rail { background: var(--pine); color: #E8EDE6; padding: 22px 16px 34px; display: flex; flex-direction: column; gap: 22px;
+  .shell { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+  .rail { background: var(--pine); color: #E8EDE6; padding: 20px 15px 30px; display: flex; flex-direction: column; gap: 18px;
           position: sticky; top: 0; height: 100vh; overflow-y: auto; }
-  .brand { font-family: var(--display); font-weight: 700; font-size: 19px; letter-spacing: -.02em; color: #fff; line-height: 1.15; }
-  .brand em { display: block; font-style: normal; font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; opacity: .55; margin-top: 5px; }
-  .brand img { max-width: 100%; max-height: 46px; object-fit: contain; object-position: left; display: block; margin-bottom: 25px; }
+  /* The brand block is a lockup, not a stack: a small mark beside a small
+     name, with the console label under it. The logo used to run up to 46px
+     tall with 25px under it, which made the top of the rail shout before the
+     client had read anything. Quieter reads as more expensive. */
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  /* Height is fixed, width is free: a square mark comes out 34×34 and a wide
+     wordmark up to 92×34, so both kinds of logo sit in the same lockup
+     without one of them being squashed. */
+  .brand img { height: 34px; width: auto; max-width: 92px; flex: none;
+    object-fit: contain; object-position: center; border-radius: 7px; display: block; }
+  .brand .brandText { min-width: 0; }
+  .brand .brandText span { display: block; font-weight: 600; font-size: 14px; letter-spacing: -.01em;
+    color: #fff; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .brand em { display: block; font-style: normal; font-family: var(--mono); font-size: 9px;
+    letter-spacing: .16em; text-transform: uppercase; opacity: .5; margin-top: 4px; }
+  /* A hairline under the lockup, as in the reference — it separates identity
+     from controls without needing a gap big enough to notice. */
+  .brandRule { height: 1px; background: rgba(255,255,255,.13); margin: -6px 0 -6px; }
   .dashLogoPrev { max-width: 200px; max-height: 52px; object-fit: contain; object-position: left;
                   border: 1px solid var(--mist); border-radius: 9px; padding: 8px 10px; margin-top: 8px; background: var(--pine); display: block; }
   .rail label { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; opacity: .55; display: block; margin-bottom: 7px; }
@@ -161,7 +183,7 @@
   /* A translucent white stays readable whatever the rail colour is set to. */
   .nav .count { color: #fff; background: rgba(255,255,255,.16); font-family: var(--mono); font-size: 11px;
                 opacity: .95; padding: 3px 8px; border-radius: 3px; }
-  .main { padding: 0 0 60px; max-width: 1480px; }
+  .main { padding: 0 0 60px; max-width: 100%; }
   .main > .view, .main > .suspendBar { padding: 0 34px; }
 
   /* ---- top bar ----
@@ -427,7 +449,7 @@
      and the board and the slips list rendering the same leads at once — so the
      rule is stated once, broadly, rather than patched per component. */
   .panel[hidden], .view[hidden], .slips[hidden], .desk[hidden],
-  .stats[hidden], .row[hidden], .acts[hidden],
+  .stats[hidden], .row[hidden], .acts[hidden], .brand img[hidden],
   .search[hidden], .barExport[hidden], .barTools[hidden],
   .convSplit[hidden], .convList[hidden], .convPane[hidden],
   .fieldRow[hidden], .colorField[hidden], .legend[hidden] { display: none !important; }
@@ -531,13 +553,54 @@
   .slip .asked { margin-top: 15px;margin-bottom: 15px; font-size: 12.5px; color: #7A6248; line-height: 1.4; }
   .logoPrev { width: 46px; height: 46px; object-fit: cover; border-radius: 9px; border: 1px solid var(--mist); margin-top: 8px; background: #fff; }
 
-  /* ---- lists ---- */
-  .gap { border-left: 3px solid var(--clay); background: #fff; border-radius: 0 8px 8px 0; padding: 10px 13px;
-         margin-bottom: 7px; display: flex; align-items: center; gap: 10px; }
-  .gap span { flex: 1; }
+  /* ---- gaps ---- */
+  .gapPanel { margin-top: 18px; }
+  .gapHead { display: flex; align-items: flex-start; gap: 11px; }
+  .gapHead > div { flex: 1; min-width: 0; }
+  .gapHead h2 { margin-bottom: 3px; }
+  .gapHead .sub { margin: 0; }
+  .gapMark { width: 22px; height: 22px; flex: none; border-radius: 99px; display: grid; place-items: center;
+    background: #FDF0DC; color: #B06A10; margin-top: 1px; }
+  .gapMark svg { width: 15px; height: 15px; }
+  .gapCount { flex: none; font-size: 12px; color: var(--muted); white-space: nowrap; margin-top: 3px; }
+  #gaps { margin-top: 14px; display: grid; gap: 8px; }
+  /* A tinted row rather than a white card on a white panel: these are the
+     items asking to be dealt with, and they should not look like the rest. */
+  .gap { background: #FDF5F3; border: 1px solid #F2DED8; border-radius: 10px;
+    padding: 11px 11px 11px 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    transition: border-color .18s, background .18s; }
+  .gap:hover { border-color: #E6C6BE; }
+  .gapDot { width: 7px; height: 7px; border-radius: 99px; background: var(--clay); flex: none; }
+  .gapQ { flex: 1; min-width: 150px; font-size: 13.5px; line-height: 1.45; }
+  .gapAsked { flex: none; font-size: 11px; color: var(--muted); background: var(--card);
+    border: 1px solid var(--mist); border-radius: 99px; padding: 3px 9px; white-space: nowrap; }
+  .gapAdd { flex: none; display: inline-flex; align-items: center; gap: 5px; background: var(--ink);
+    color: #fff; border: 0; border-radius: 8px; padding: 7px 12px; font: inherit; font-size: 12.5px;
+    font-weight: 600; cursor: pointer; transition: transform .16s cubic-bezier(.2,.8,.3,1), box-shadow .16s; }
+  .gapAdd:hover { transform: translateY(-1px); box-shadow: 0 7px 16px -9px rgba(0,0,0,.75); }
+  .gapAdd:active { transform: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    .gap { animation: rise .36s cubic-bezier(.2,.75,.3,1) backwards; }
+  }
+  /* A short flash so the client's eye lands on the box that just changed,
+     rather than on a settings page that looks the same as before. */
+  .justFilled { animation: flashField 1.3s ease; }
+  @keyframes flashField {
+    0%, 60% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brass) 40%, transparent); }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
   .gapX, .slipX { background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 18px; line-height: 1;
                   padding: 2px 6px; border-radius: 6px; opacity: .45; transition: opacity .15s, color .15s; }
   .gapX:hover, .slipX:hover { opacity: 1; color: var(--clay); background: rgba(168,65,47,.08); }
+  @media (max-width: 520px) {
+    .gapQ { min-width: 100%; order: -1; }
+    .gapAdd { margin-left: auto; }
+    /* The count beside a wrapping title squeezes it to three lines, so on a
+       phone it drops under the heading instead. */
+    .gapHead { flex-wrap: wrap; }
+    .gapHead > div { flex: 1 1 100%; order: 2; }
+    .gapCount { order: 1; margin: 1px 0 0 auto; }
+  }
   .slipX { position: absolute; top: 6px; right: 7px; }
   .slip:hover .slipX { opacity: .7; }
   /* ---- conversations: list on the left, the chat itself on the right ----
@@ -783,8 +846,11 @@
   <aside class="rail" id="rail">
     <div class="brand" id="brand">
       <img id="brandLogo" alt="" hidden />
-      <span id="brandName">Front Desk</span><em>chatbot console</em>
+      <div class="brandText">
+        <span id="brandName">Front Desk</span><em>chatbot console</em>
+      </div>
     </div>
+    <div class="brandRule"></div>
     <div class="who">
       <div class="whoName" id="whoName">&nbsp;</div>
       <button class="linkish" id="signOut" type="button">Sign out</button>
@@ -905,9 +971,23 @@
           <div id="intents"></div>
         </div>
       </div>
-      <h2>Questions the bot could not answer</h2>
-      <p class="sub">Each one is a gap in the knowledge base. Answer them in Settings under “What the bot should know”.</p>
-      <div id="gaps"></div>
+      <!-- Given a panel of its own. These are the most actionable thing on the
+           page — each row is a sale the bot could not finish — and as bare
+           rows under a heading they read like a log rather than a to-do. -->
+      <div class="panel gapPanel" id="gapPanel">
+        <div class="gapHead">
+          <span class="gapMark" aria-hidden="true">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+              <path d="M5.9 6a2.2 2.2 0 1 1 2.6 2.2v1.3"/><circle cx="8.5" cy="12" r=".6" fill="currentColor" stroke="none"/></svg>
+          </span>
+          <div>
+            <h2>Questions the bot could not answer</h2>
+            <p class="sub">Each one is a gap in the knowledge base. Answering it here teaches the bot for every visitor after.</p>
+          </div>
+          <span class="gapCount" id="gapCount"></span>
+        </div>
+        <div id="gaps"></div>
+      </div>
     </section>
 
     <!-- LEADS -->
@@ -1502,7 +1582,7 @@ $('#tenant').addEventListener('change', () => {
   // comes round — which, on Conversations, is somebody else's transcripts.
   convCache = []; convSig = ''; openConvId = null;
   leadCache = []; leadSig = ''; kbCache = []; kbSig = '';
-  lastStatSig = ''; lastGapSig = ''; lastTrendSig = '';
+  lastStatSig = ''; lastGapSig = null; lastTrendSig = '';
   loadOverview(true);   // different workspace — the form must repopulate
   const v = activeView()?.id.replace('v-', '');
   if (v === 'leads') loadLeads();
@@ -1572,7 +1652,45 @@ $('#wsCreate').onclick = async () => {
 
 // ---- overview ----
 let lastStatSig = '';
-let lastGapSig = '';
+// null, not ''. An empty gap list produces an empty signature, so with '' as
+// the starting value the "nothing missed yet" state matched the sentinel and
+// was never painted — a client with no gaps saw a blank panel. null can never
+// be produced by the join, so it is a safe "nothing rendered yet".
+let lastGapSig = null;
+
+// "Add answer" does the tedious part: it opens Settings, drops the question
+// into "What the bot should know" already formatted, and puts the cursor where
+// the answer goes. Telling a client to go and find the right box themselves is
+// how a list of gaps stays a list of gaps.
+function answerGap(question) {
+  $('.nav button[data-view="settings"]').click();
+  const box = $('#sFacts');
+  if (!box) return;
+  const line = `Q: ${question}\nA: `;
+  // Already queued from an earlier click — just go back to it rather than
+  // adding the same question twice.
+  if (box.value.includes(`Q: ${question}`)) {
+    const at = box.value.indexOf(`Q: ${question}`);
+    focusFacts(box, at + line.length);
+    return toast('That question is already waiting for an answer below.');
+  }
+  const sep = box.value.trim() ? (box.value.endsWith('\n') ? '\n' : '\n\n') : '';
+  box.value = box.value + sep + line;
+  settingsTouched = true;
+  focusFacts(box, box.value.length);
+  toast('Type the answer, then save. The bot will use it from the next message on.');
+}
+
+function focusFacts(box, caret) {
+  // After the view switch has painted, or the scroll lands on the old layout.
+  requestAnimationFrame(() => {
+    box.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    box.focus({ preventScroll: true });
+    box.setSelectionRange(caret, caret);
+    box.classList.add('justFilled');
+    setTimeout(() => box.classList.remove('justFilled'), 1400);
+  });
+}
 
 async function loadOverview(force = false) {
   if (!tenantId) return;
@@ -1607,12 +1725,24 @@ async function loadOverview(force = false) {
       animateCounts($('#stats'));
     }
     loadTrend();
-    const gapSig = o.unanswered.join('\u0001');
+    // The server used to send bare strings and now sends {q, count}. Both are
+    // accepted so that uploading one file ahead of the other does not empty
+    // the panel.
+    const gaps = (o.unanswered || []).map((g) => (typeof g === 'string' ? { q: g, count: 1 } : g));
+    const gapSig = gaps.map((g) => g.q + '\u0002' + g.count).join('\u0001');
     if (gapSig !== lastGapSig) {
       lastGapSig = gapSig;
-      $('#gaps').innerHTML = o.unanswered.length
-        ? o.unanswered.map((q) => `<div class="gap"><span>${escapeHtml(q)}</span>
-            <button class="gapX" data-gap="${escapeHtml(q)}" aria-label="Dismiss this question" title="Dismiss">&times;</button></div>`).join('')
+      $('#gapCount').textContent = gaps.length
+        ? `${gaps.length} gap${gaps.length === 1 ? '' : 's'} detected` : '';
+      $('#gaps').innerHTML = gaps.length
+        ? gaps.map((g, i) => `
+          <div class="gap" style="animation-delay:${Math.min(i * 45, 270)}ms">
+            <i class="gapDot" aria-hidden="true"></i>
+            <span class="gapQ">&ldquo;${escapeHtml(g.q)}&rdquo;</span>
+            ${g.count > 1 ? `<span class="gapAsked">Asked ${g.count} times</span>` : '<span class="gapAsked">Asked once</span>'}
+            <button class="gapAdd" data-answer="${escapeHtml(g.q)}">+ Add answer</button>
+            <button class="gapX" data-gap="${escapeHtml(g.q)}" aria-label="Dismiss this question" title="Dismiss">&times;</button>
+          </div>`).join('')
         : `<div class="empty"><strong>Nothing missed yet</strong>The bot found an answer for every question it received.</div>`;
     }
     $('#suspendBar').hidden = !o.suspended;
@@ -1628,9 +1758,13 @@ async function loadOverview(force = false) {
         b.closest('.gap').style.opacity = '.4';
         try {
           await api(`/api/admin/${tenantId}/gaps/dismiss`, { method: 'POST', body: JSON.stringify({ question: b.dataset.gap }) });
+          lastGapSig = null;             // the row must go, and the data did change
           loadOverview();
         } catch (e) { toast(e.message); }
       };
+    });
+    document.querySelectorAll('[data-answer]').forEach((b) => {
+      b.onclick = () => answerGap(b.dataset.answer);
     });
     const pv = $('#previewLogin');
     if (pv) pv.href = '/login.html?w=' + encodeURIComponent(tenantId);
