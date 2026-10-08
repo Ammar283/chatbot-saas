@@ -970,6 +970,17 @@ app.post('/api/admin/archive/:file/restore', requireAdmin, requireOwner, (req, r
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// Erase an archive for good. Owner only, and it takes the workspace's name in
+// the body: a DELETE that works on its URL alone is one mis-click or one
+// stale tab away from destroying a client's data with no way back.
+app.delete('/api/admin/archive/:file', requireAdmin, requireOwner, (req, res) => {
+  try {
+    const { name } = store.purgeArchive(req.params.file, req.body?.confirm);
+    console.log(`[archive purged] "${name}" by ${req.account?.email || 'key'}`);
+    res.json({ ok: true, name });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 app.get('/api/admin/:tenantId/overview', requireAdmin, requireTenant, (req, res) => {
   const t = store.load(req.params.tenantId);
   const usage = store.usageThisMonth(t);

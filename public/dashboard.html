@@ -35,7 +35,7 @@
        against an inherited one and the chart would never repaint. */
     --c1: var(--brass);
     --c2: var(--pine);
-    --mono: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: var(--body); background: var(--paper); color: var(--ink); font-size: 14px; line-height: 1.55; }
@@ -469,6 +469,11 @@
   .btn:hover { background: #24503F; }
   .btn.ghost { background: none; color: var(--pine); border: 1px solid var(--mist); }
   .btn.warn { background: none; color: var(--clay); border: 1px solid var(--clay); }
+  /* Quiet until you reach for it. An irreversible action should not compete
+     with Restore for attention, but it must colour up the moment it is the
+     one under the cursor. */
+  .btn.ghost.danger { color: var(--clay); border-color: color-mix(in srgb, var(--clay) 28%, var(--mist)); }
+  .btn.ghost.danger:hover { background: color-mix(in srgb, var(--clay) 8%, transparent); border-color: var(--clay); }
   .btn:disabled { opacity: .55; cursor: default; }
   .row { display: flex; gap: 9px; align-items: flex-end; flex-wrap: wrap; }
 
@@ -552,6 +557,60 @@
   .slip .none { color: #A08A6E; font-style: italic; font-size: 12.5px; }
   .slip .asked { margin-top: 15px;margin-bottom: 15px; font-size: 12.5px; color: #7A6248; line-height: 1.4; }
   .logoPrev { width: 46px; height: 46px; object-fit: cover; border-radius: 9px; border: 1px solid var(--mist); margin-top: 8px; background: #fff; }
+
+  /* ---- panel headers ----
+     The same marked header the gaps panel uses, generalised. A panel that
+     opens with an icon and a one-line explanation reads as a thing with a
+     purpose; a bare <h2> over a control reads as a form field that grew. */
+  .pHead { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 15px; }
+  .pHead > div { flex: 1; min-width: 0; }
+  .pHead h2 { margin-bottom: 3px; }
+  .pHead .sub { margin: 0; }
+  .pMark { width: 26px; height: 26px; flex: none; border-radius: 8px; display: grid; place-items: center; }
+  .pMark svg { width: 15px; height: 15px; }
+  .pMark.code { background: color-mix(in srgb, var(--pine) 11%, var(--card)); color: var(--pine); }
+  .pMark.key  { background: color-mix(in srgb, var(--brass) 18%, var(--card));
+                color: color-mix(in srgb, var(--brass) 78%, var(--ink)); }
+  .pMark.warn { background: #FBE7E3; color: var(--clay); }
+
+  /* ---- install snippet ----
+     The snippet is something you copy, not something you read, so the copy
+     control sits on it rather than under it. */
+  .snipWrap { position: relative; }
+  /* Wraps rather than scrolling sideways. A single long line slides straight
+     under the copy button and leaves half the snippet out of view; wrapped,
+     the padding keeps every line clear of the button and the whole tag can be
+     read without touching a scrollbar. */
+  .snipWrap pre { margin: 0; padding: 14px 104px 14px 14px; white-space: pre-wrap;
+    overflow-wrap: anywhere; overflow-x: visible; line-height: 1.65; }
+  .snipCopy { position: absolute; top: 9px; right: 9px; display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,.1); color: #fff; border: 1px solid rgba(255,255,255,.22);
+    border-radius: 7px; padding: 6px 11px; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+    transition: background .16s, border-color .16s, transform .16s cubic-bezier(.2,.8,.3,1); }
+  .snipCopy svg { width: 13px; height: 13px; }
+  .snipCopy:hover { background: rgba(255,255,255,.2); border-color: rgba(255,255,255,.4); transform: translateY(-1px); }
+  .snipCopy:active { transform: none; }
+  .snipCopy.done { background: var(--brass); color: var(--onBrass); border-color: var(--brass); }
+
+  /* ---- delete workspace ---- */
+  .dangerZone { margin-top: 26px; }
+  .dangerNote { font-size: 13px; color: #6E3C32; background: color-mix(in srgb, var(--clay) 7%, transparent);
+    border-radius: 9px; padding: 10px 13px; margin-bottom: 14px; line-height: 1.5; }
+  .dangerNote strong { color: #5C2E25; }
+  .linkTo { background: none; border: 0; padding: 0; font: inherit; color: var(--clay); font-weight: 600;
+    cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+  /* The field and its button are one control: the button does nothing until
+     the field matches, so they should not read as two separate choices. */
+  .dangerAct { display: flex; gap: 9px; flex-wrap: wrap; }
+  .dangerAct input { flex: 1; min-width: 210px; background: var(--card); border-color: #E4C4BE; }
+  .dangerAct input:focus { outline-color: var(--clay); }
+  .dangerAct .btn { flex: none; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  /* A deliberate width rather than the browser's 180px default, which looked
+     like an oversight next to the full-width fields above it. Not full width
+     either: a password box as wide as the panel invites a sentence. */
+  #pwForm .field input { width: 100%; max-width: 330px; }
 
   /* ---- gaps ---- */
   .gapPanel { margin-top: 18px; }
@@ -1344,22 +1403,44 @@
         <button class="btn ghost" id="clearActivity">Clear leads and conversations</button>
       </div>
 
-      <div class="panel danger">
-        <h2>Delete this workspace</h2>
-        <p class="sub">Removes the chatbot, its knowledge and its leads. It is archived, not erased &mdash; ask us if you need it back.</p>
-        <div class="row">
-          <input type="text" id="delConfirm" placeholder="Type the workspace name" style="flex:1;min-width:200px" />
-          <button class="btn warn" id="delWs">Delete workspace</button>
+      <!-- The install snippet is the thing an agency reaches for most often on
+           this page, so it comes before the destructive panel rather than
+           after it. -->
+      <div class="panel">
+        <div class="pHead">
+          <span class="pMark code" aria-hidden="true">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 11 3 8l3-3M10 5l3 3-3 3"/></svg>
+          </span>
+          <div>
+            <h2>Install on the client&rsquo;s site</h2>
+            <p class="sub">Paste this once, just before the closing &lt;/body&gt; tag. Nothing else is needed.</p>
+          </div>
+        </div>
+        <div class="snipWrap">
+          <pre id="snippet">Select a workspace first.</pre>
+          <button class="snipCopy" id="copySnippet" type="button">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 3.5h-7a1 1 0 0 0-1 1v7"/></svg>
+            <span>Copy</span>
+          </button>
         </div>
       </div>
-      <div class="panel">
-        <h2>Install on the client's site</h2>
-        <p class="sub">Paste this once, just before the closing &lt;/body&gt; tag.</p>
-        <pre id="snippet">Select a workspace first.</pre>
-        <button class="btn ghost" id="copySnippet">Copy snippet</button>
-      </div>
+
       <div class="panel" id="pwPanel">
-        <h2>Change your password</h2>
+        <div class="pHead">
+          <span class="pMark key" aria-hidden="true">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="5.6" cy="10.4" r="2.9"/><path d="m7.8 8.3 5-5M11 5l1.4 1.4M9.6 6.4 11 7.8"/></svg>
+          </span>
+          <div>
+            <h2>Change your password</h2>
+            <p class="sub">Only affects your own sign-in, not your clients&rsquo; keys.</p>
+          </div>
+        </div>
         <!-- A real <form> with a username field in it, on purpose.
              These were two bare password inputs with no form around them, so
              Chrome's password manager went looking for the username to pair
@@ -1382,6 +1463,32 @@
             <input type="password" id="pwNext" name="new-password" autocomplete="new-password" /></div>
           <button class="btn" id="savePw" type="submit">Change password</button>
         </form>
+      </div>
+
+      <!-- Last on the page and visually set apart, because the one thing this
+           panel must never be is something you hit on the way to something
+           else. -->
+      <div class="panel danger dangerZone">
+        <div class="pHead">
+          <span class="pMark warn" aria-hidden="true">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 2.6 14.6 13H1.4z"/><path d="M8 6.6v3"/><circle cx="8" cy="11.4" r=".55" fill="currentColor" stroke="none"/></svg>
+          </span>
+          <div>
+            <h2>Delete this workspace</h2>
+            <p class="sub">Removes the chatbot, its knowledge and its leads from this dashboard.</p>
+          </div>
+        </div>
+        <p class="dangerNote">
+          <strong>It is archived, not erased.</strong> You can restore it yourself from
+          <button type="button" class="linkTo" data-goto="clients">My clients</button>, or erase it for good from there.
+        </p>
+        <div class="dangerAct">
+          <label class="sr" for="delConfirm">Workspace name</label>
+          <input type="text" id="delConfirm" autocomplete="off" placeholder="Type the workspace name to confirm" />
+          <button class="btn warn" id="delWs">Delete workspace</button>
+        </div>
       </div>
     </section>
   </main>
@@ -2656,7 +2763,29 @@ $('#saveSettings').onclick = async () => {
   } catch (e) { toast(e.message); }
 };
 
-$('#copySnippet').onclick = () => { navigator.clipboard.writeText($('#snippet').textContent); toast('Snippet copied.'); };
+$('#copySnippet').onclick = async () => {
+  const btn = $('#copySnippet'), label = btn.querySelector('span');
+  try {
+    await navigator.clipboard.writeText($('#snippet').textContent);
+  } catch {
+    // Clipboard access is refused on an insecure origin and in some embedded
+    // browsers. Selecting the text at least leaves the client one keystroke
+    // from having it, instead of a button that silently does nothing.
+    const r = document.createRange();
+    r.selectNodeContents($('#snippet'));
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    return toast('Could not reach the clipboard — the snippet is selected, press Ctrl+C.');
+  }
+  btn.classList.add('done'); label.textContent = 'Copied';
+  setTimeout(() => { btn.classList.remove('done'); label.textContent = 'Copy'; }, 1600);
+};
+
+// "My clients" inside the delete panel, so the way back from a mistake is one
+// click rather than something the client has to go and find.
+document.addEventListener('click', (e) => {
+  const to = e.target.closest('[data-goto]');
+  if (to) $(`.nav button[data-view="${to.dataset.goto}"]`)?.click();
+});
 $('#copyClientKey').onclick = () => { navigator.clipboard.writeText($('#clientKey').textContent); toast('Client key copied.'); };
 
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
@@ -2760,13 +2889,43 @@ async function loadClients() {
     $('#archiveRows').innerHTML = d.archived.map((a) => `
       <div class="crow">
         <div><strong>${escapeHtml(a.name)}</strong><small>archived ${new Date(a.archivedAt).toLocaleDateString()}</small></div>
-        <button class="btn ghost" data-restore="${escapeHtml(a.file)}">Restore</button>
+        <div class="acts">
+          <button class="btn ghost" data-restore="${escapeHtml(a.file)}">Restore</button>
+          <button class="btn ghost danger" data-purge="${escapeHtml(a.file)}"
+                  data-wsname="${escapeHtml(a.name)}">Erase for good</button>
+        </div>
       </div>`).join('');
     document.querySelectorAll('[data-restore]').forEach((b) => {
       b.onclick = async () => {
         try { await api(`/api/admin/archive/${encodeURIComponent(b.dataset.restore)}/restore`, { method: 'POST' });
           toast('Workspace restored.'); loadClients(); loadTenants(); }
         catch (e) { toast(e.message); }
+      };
+    });
+    document.querySelectorAll('[data-purge]').forEach((b) => {
+      b.onclick = async () => {
+        const name = b.dataset.wsname;
+        // Two gates, because there is no third chance. The name has to be
+        // typed — a plain yes/no is too easy to click through on the wrong row
+        // — and the server checks it again rather than trusting this.
+        const typed = prompt(
+          `Erase “${name}” permanently?\n\n`
+          + `This is not the same as deleting a workspace. The archive is removed from the server: `
+          + `its leads, conversations and knowledge cannot be recovered by us or by anyone.\n\n`
+          + `Type the workspace name to confirm:`);
+        if (typed === null) return;
+        if (typed.trim().toLowerCase() !== name.trim().toLowerCase()) return toast('That name did not match. Nothing was erased.');
+        b.disabled = true; b.textContent = 'Erasing…';
+        try {
+          await api(`/api/admin/archive/${encodeURIComponent(b.dataset.purge)}`, {
+            method: 'DELETE', body: JSON.stringify({ confirm: typed }),
+          });
+          toast(`“${name}” has been erased for good.`);
+          loadClients();
+        } catch (e) {
+          b.disabled = false; b.textContent = 'Erase for good';
+          toast(e.message);
+        }
       };
     });
 
