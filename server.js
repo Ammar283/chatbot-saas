@@ -286,12 +286,17 @@ app.post('/api/chat', async (req, res) => {
     const lead = mergeLead(tenant, convId, reply.lead);
     if (lead) notifyOnce(tenant, lead);
 
+    reply.suggestions = usableSuggestions(reply.suggestions);
+
     logTurn(tenant, convId, message, reply.answer, {
       grounded: reply.grounded,
       handoff: reply.handoff,
       model: out.model,
       // A name or phone number is not a question the bot failed to answer.
       leadTurn: gaveDetails || asking !== null,
+      // What this reply put on screen, so that if the next message is one of
+      // them we know it was a tap and not a question.
+      offered: reply.suggestions,
     }, req.ip);
     store.save(tenant.id);
 
@@ -449,13 +454,62 @@ const QUESTION_WORD = /\?|\b(do|does|did|can|could|what|when|where|how|why|who|w
 const SMALL_TALK = /^(hi|hey|hello|thanks?|thank you|ok|okay|sure|yes|no|bye|good (morning|afternoon|evening)|salam|assalam[ou]? ?alaikum)\b/i;
 const OWN_BOOKING = /\b(my|the) (appointment|booking|request|slot)\b|\bis (it|that|my appointment) (booked|confirmed)\b/i;
 
+// "Book an appointment" is a request to start something, not a question with a
+// missing answer. It was being logged as a gap in the knowledge base, so a
+// client's "questions the bot could not answer" list filled up with the single
+// most successful thing the bot does.
+const WANTS_TO_ACT = /^(i (want|would like|need) to |i'?d like to |can i |please |how (do i|to) )?\b(book|schedule|arrange|request|get|start)\b.{0,30}\b(appointment|booking|consultation|quote|call ?back|visit|slot|started)\b|^book\b|^get (a )?quote\b|^request a (quote|call)\b/i;
+
+// A question the BOT put to the visitor, tapped back as a reply. The assistant
+// cannot answer its own question, so it comes back ungrounded and looks like a
+// gap. It is not one — nobody wanted that information.
+//
+// Written as an explicit list of openers rather than "starts with a question
+// word and mentions you". That looser version also swallowed "Do you offer
+// payment plans?" and "Do you accept Bupa?" — real questions where "you" means
+// the business, not the visitor. Letting the odd bot question through to the
+// gaps list is untidy; hiding a question a customer actually asked is the bug
+// this whole panel exists to prevent, so the rule errs towards logging.
+const ASKED_THE_VISITOR = new RegExp(
+  '^(' + [
+    'would you (like|prefer|rather)',
+    'do you want (me|us)\\b',
+    'shall i\\b', 'should i\\b',
+    '(may|can|could) i (have|get|take) your',
+    '(what|which) (is|are) your (name|number|phone|email|preferred)',
+    '(which|what) (one|option|of these)\\b.*\\bfor you',
+    'are you looking for',
+    'is there anything else',
+    '(how|what) can (i|we) help',
+    'would you be',
+    'do you have a preferred',
+    'can i help you with',
+  ].join('|') + ')', 'i');
+
+// Suggestion chips are meant to be questions the VISITOR might want to ask.
+// The model kept offering the questions IT was asking them — "Would you like
+// to know about the cost?" — which the visitor then taps, sending the bot its
+// own question. It cannot answer that, so the turn comes back ungrounded and
+// lands in the client's gaps list. Dropped before they ever reach the screen.
+function usableSuggestions(list) {
+  return (Array.isArray(list) ? list : [])
+    .map((s) => String(s || '').trim())
+    .filter((s) => s.length > 3 && s.length <= 70 && !ASKED_THE_VISITOR.test(s))
+    .slice(0, 3);
+}
+
 function isKnowledgeGap(turn) {
   if (turn.grounded !== false) return false;
   if (turn.leadTurn) return false;
+  // Tapped one of the buttons the assistant offered, rather than typing a
+  // question of their own.
+  if (turn.tapped) return false;
   const q = String(turn.q || '').trim();
   if (q.length < 8) return false;
   if (SMALL_TALK.test(q)) return false;
   if (OWN_BOOKING.test(q)) return false;
+  if (WANTS_TO_ACT.test(q)) return false;
+  if (ASKED_THE_VISITOR.test(q)) return false;
   // A bare name, phone number or email is an answer, not a question.
   const looksLikeContact = PHONE_LIKE.test(q) || EMAIL_LIKE.test(q) || NAME_LIKE(q);
   if (looksLikeContact && !QUESTION_WORD.test(q)) return false;
@@ -701,7 +755,16 @@ function logTurn(tenant, convId, question, answer, meta = {}, ip = '') {
     if (tenant.conversations.length > 500) tenant.conversations.length = 500;
   }
   if (!conv.visitor && ip) conv.visitor = maskIp(ip);
-  conv.turns.push({ q: question, a: answer, at: new Date().toISOString(), ...meta });
+  // Did they tap a button rather than type? Compared against the opening menu
+  // and against whatever the previous reply offered, which is the only place
+  // that knows what was on screen when they tapped.
+  const norm = (x) => String(x || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const offered = [
+    ...(Array.isArray(tenant.settings.quickReplies) ? tenant.settings.quickReplies : []),
+    ...(conv.turns[conv.turns.length - 1]?.offered || []),
+  ].map(norm);
+  const tapped = offered.includes(norm(question));
+  conv.turns.push({ q: question, a: answer, at: new Date().toISOString(), tapped, ...meta });
   conv.lastAt = new Date().toISOString();
 }
 
