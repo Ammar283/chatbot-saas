@@ -288,6 +288,34 @@ app.post('/api/chat', async (req, res) => {
 
     reply.suggestions = usableSuggestions(reply.suggestions);
 
+    // "Is my appointment booked?" — answered from what we already hold, not
+    // from the knowledge base.
+    //
+    // The visitor had just handed over name, phone and email and been told the
+    // request was recorded. They asked whether it had gone through and got
+    // "I'm sorry, I don't have that detail." Nothing in the knowledge base
+    // mentions this person's booking, so the model was right that it had no
+    // passage for it — and completely wrong about what was being asked. The
+    // server knows the answer: the enquiry is on file.
+    //
+    // Deterministic rather than another line in the prompt, because of all the
+    // moments to be unsure this is the worst. The visitor is asking "did it
+    // work?", and "I don't know" tells them it did not.
+    const askedAboutTheirRequest = ASKED_ABOUT_OWN_REQUEST.test(message);
+    if (askedAboutTheirRequest) {
+      const onFile = tenant.leads.find((l) => l.conversationId === convId);
+      if (onFile && isContactable(onFile)) {
+        reply.answer = isComplete(onFile, required)
+          ? `Yes — your request is recorded and the team will be in touch${onFile.name ? `, ${String(onFile.name).split(/\s+/)[0]}` : ''}. Nothing further is needed from you.`
+          : 'Yes — your enquiry is with the team and they will come back to you shortly.';
+        // It was answered, from state. Marking it grounded keeps it out of the
+        // client's "questions the bot could not answer" list and stops the
+        // callback-ask block below asking for details already on file.
+        reply.grounded = true;
+        reply.handoff = false;
+      }
+    }
+
     logTurn(tenant, convId, message, reply.answer, {
       grounded: reply.grounded,
       handoff: reply.handoff,
@@ -452,7 +480,29 @@ const NAME_LIKE = (q) => /^[\p{L}\s.'-]{2,40}$/u.test(q) && q.split(/\s+/).lengt
 // Question markers across the languages this bot actually sees.
 const QUESTION_WORD = /\?|\b(do|does|did|can|could|what|when|where|how|why|who|which|is|are|will|would|should|price|cost|open|available)\b|\b(kya|kia|kitna|kitne|kitni|kab|kahan|kaise|kaisay|konsa|hai|ho|karte|krte)\b/i;
 const SMALL_TALK = /^(hi|hey|hello|thanks?|thank you|ok|okay|sure|yes|no|bye|good (morning|afternoon|evening)|salam|assalam[ou]? ?alaikum)\b/i;
-const OWN_BOOKING = /\b(my|the) (appointment|booking|request|slot)\b|\bis (it|that|my appointment) (booked|confirmed)\b/i;
+// The word people are asking about, spelled the way people actually type it.
+// A real visitor sent "My appointmnet is booked?" and the exact-spelling
+// version below missed it, so the question went to the knowledge base, came
+// back unanswered, and landed in the client's gaps list as well. The letters
+// after "appoint" are allowed to be anything, which catches appointmnet,
+// appointmet, appointmnt and the rest without a spell checker.
+const BOOKING_NOUN = '(appoint\\w*|booking|reservation|request|enquiry|inquiry|slot)';
+const OWN_BOOKING = new RegExp(
+  `\\b(my|our|the) ${BOOKING_NOUN}\\b|\\bis (it|that|my ${BOOKING_NOUN}) (booked|confirmed|done)\\b`, 'i');
+
+// Asking after their own enquiry: "is my appointment booked?", "did you get my
+// details?", "has it gone through?". A question about state, not about the
+// business — and the one question the knowledge base can never answer.
+const ASKED_ABOUT_OWN_REQUEST = new RegExp([
+  `\\b(my|our) ${BOOKING_NOUN}\\b`,
+  `\\bis (my|our|the) ${BOOKING_NOUN}\\b`,
+  `\\b(did|have) (you|u) (get|got|receive[d]?|have) (my|our|it|that|the)\\b`,
+  '\\b(is|has) (it|that|this) (booked|confirmed|gone through|been (booked|confirmed|received|recorded|sent))\\b',
+  '\\bam i (booked|confirmed|registered)\\b',
+  '\\b(are|is) (we|i|my details) (booked|confirmed|recorded|saved|on file)\\b',
+  '\\bbooking (confirmed|status)\\b',
+  '\\bdid (it|that) (work|go through|send)\\b',
+].join('|'), 'i');
 
 // "Book an appointment" is a request to start something, not a question with a
 // missing answer. It was being logged as a gap in the knowledge base, so a
@@ -508,6 +558,7 @@ function isKnowledgeGap(turn) {
   if (q.length < 8) return false;
   if (SMALL_TALK.test(q)) return false;
   if (OWN_BOOKING.test(q)) return false;
+  if (ASKED_ABOUT_OWN_REQUEST.test(q)) return false;
   if (WANTS_TO_ACT.test(q)) return false;
   if (ASKED_THE_VISITOR.test(q)) return false;
   // A bare name, phone number or email is an answer, not a question.
