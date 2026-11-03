@@ -198,6 +198,36 @@
         .menuItem:focus-visible { outline: 2px solid ${config.accent}; outline-offset: 1px; }
         .menuItem.wide { grid-column: 1 / -1; background: ${config.accent}; color: ${ON}; border-color: ${config.accent}; font-weight: 500; }
 
+        /* Booking. A visitor who taps "Book an appointment" should be two taps
+           and three fields from done — not six conversational turns ending in
+           a human reading "Tuesday-ish". */
+        .book { background: #fff; border: 1px solid rgba(0,0,0,.09); border-radius: 13px; padding: 12px; }
+        .bookDays { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 2px; scrollbar-width: thin; }
+        .bookDay { flex: none; border: 1px solid rgba(0,0,0,.12); background: #fff; border-radius: 9px;
+                   padding: 7px 11px; font-size: 12.5px; cursor: pointer; font-family: inherit; color: #16181D;
+                   white-space: nowrap; line-height: 1.3; }
+        .bookDay.on { background: ${config.accent}; color: ${ON}; border-color: ${config.accent}; font-weight: 600; }
+        .bookTimes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+        .bookTime { border: 1px solid rgba(0,0,0,.12); background: #fff; border-radius: 9px; padding: 9px 4px;
+                    font-size: 13px; cursor: pointer; font-family: inherit; color: #16181D; }
+        .bookTime:hover { border-color: ${config.accent}; }
+        .bookTime.on { background: ${config.accent}; color: ${ON}; border-color: ${config.accent}; font-weight: 600; }
+        .bookForm { margin-top: 10px; display: grid; gap: 7px; }
+        .bookForm input { border: 1px solid rgba(0,0,0,.14); border-radius: 9px; padding: 10px 11px;
+                          font-size: 14px; font-family: inherit; color: #16181D; background: #fff; width: 100%; }
+        .bookForm input:focus { outline: 2px solid ${config.accent}66; outline-offset: -1px; border-color: ${config.accent}; }
+        .bookGo { background: ${config.accent}; color: ${ON}; border: 0; border-radius: 9px; padding: 11px;
+                  font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+        .bookGo:disabled { opacity: .5; cursor: default; }
+        .bookPicked { font-size: 13px; color: #16181D; margin-top: 2px; }
+        .bookPicked b { font-weight: 600; }
+        .bookErr { font-size: 12.5px; color: #C2453B; }
+        .bookNote { font-size: 11.5px; color: #6b7280; }
+        @media (max-width: 520px) {
+          .bookTimes { grid-template-columns: repeat(3, 1fr); }
+          .bookForm input { font-size: 16px; }
+        }
+
         .chips { display: flex; flex-wrap: wrap; gap: 6px; }
         .chip { background: #fff; border: 1px solid ${config.accent}33; color: ${INK};
                 border-radius: 999px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; font-family: inherit; }
@@ -366,6 +396,7 @@
     }
 
     if (busy) log.insertAdjacentHTML('beforeend', '<div class="msg bot dots" aria-label="Typing"><span></span><span></span><span></span></div>');
+    if (bookingOffer && !busy) paintBooking(log);
     if (suggestions.length && !busy) {
       log.insertAdjacentHTML('beforeend',
         `<div class="chips">${suggestions.map((s) => `<button class="chip">${esc(s)}</button>`).join('')}</div>`);
@@ -373,6 +404,117 @@
     }
     log.scrollTop = log.scrollHeight;
     root.querySelector('.send').disabled = busy;
+  }
+
+  // --- booking ---------------------------------------------------------
+  //
+  // Two taps and three fields. The slot is checked by the server as it is
+  // taken, so a time that goes while the visitor is typing comes back as a
+  // refusal and a fresh list rather than a double booking.
+
+  let bookingOffer = null;   // { timezone, days: [{ date, label, slots }] }
+  let pickedDay = 0;
+  let pickedSlot = null;
+  let bookingBusy = false;
+  let bookingError = '';
+
+  function paintBooking(log) {
+    const days = bookingOffer.days || [];
+    if (!days.length) return;
+    const day = days[Math.min(pickedDay, days.length - 1)];
+    const box = document.createElement('div');
+    box.className = 'book';
+    box.innerHTML = `
+      <div class="bookDays" role="tablist" aria-label="Choose a day">
+        ${days.map((d, i) => `<button class="bookDay ${i === pickedDay ? 'on' : ''}" role="tab"
+          aria-selected="${i === pickedDay}" data-day="${i}">${esc(shortDay(d.label))}</button>`).join('')}
+      </div>
+      <div class="bookTimes" role="group" aria-label="Choose a time">
+        ${day.slots.map((s) => `<button class="bookTime ${pickedSlot === s.at ? 'on' : ''}"
+          data-at="${esc(s.at)}">${esc(s.label)}</button>`).join('')}
+      </div>
+      ${pickedSlot ? `
+        <div class="bookForm">
+          <div class="bookPicked">Booking <b>${esc(pickedLabel())}</b></div>
+          <input class="bName" type="text" placeholder="Your full name" autocomplete="name" />
+          <input class="bPhone" type="tel" placeholder="Phone number" autocomplete="tel" />
+          <input class="bEmail" type="email" placeholder="Email (for your confirmation)" autocomplete="email" />
+          ${bookingError ? `<div class="bookErr">${esc(bookingError)}</div>` : ''}
+          <button class="bookGo" ${bookingBusy ? 'disabled' : ''}>${bookingBusy ? 'Confirming…' : 'Confirm appointment'}</button>
+          <div class="bookNote">We will email you the details and directions.</div>
+        </div>` : ''}`;
+    log.appendChild(box);
+
+    box.querySelectorAll('.bookDay').forEach((b) => b.addEventListener('click', () => {
+      pickedDay = Number(b.dataset.day); pickedSlot = null; bookingError = ''; paint();
+    }));
+    box.querySelectorAll('.bookTime').forEach((b) => b.addEventListener('click', () => {
+      pickedSlot = b.dataset.at; bookingError = ''; paint();
+      // Focus the first field so the keyboard is already up on a phone.
+      setTimeout(() => root.querySelector('.bName')?.focus(), 30);
+    }));
+    const go = box.querySelector('.bookGo');
+    if (go) {
+      go.addEventListener('click', confirmBooking);
+      box.querySelectorAll('.bookForm input').forEach((i) => i.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); confirmBooking(); }
+      }));
+    }
+  }
+
+  // "Tuesday 10 November" is too wide for a chip row on a phone.
+  function shortDay(label) {
+    const parts = String(label || '').split(' ');
+    return parts.length >= 3 ? `${parts[0].slice(0, 3)} ${parts[1]} ${parts[2].slice(0, 3)}` : label;
+  }
+
+  function pickedLabel() {
+    const day = bookingOffer?.days?.[pickedDay];
+    const slot = day?.slots.find((s) => s.at === pickedSlot);
+    return slot ? `${shortDay(day.label)} at ${slot.label}` : '';
+  }
+
+  async function confirmBooking() {
+    if (bookingBusy) return;
+    const name = root.querySelector('.bName')?.value.trim() || '';
+    const phone = root.querySelector('.bPhone')?.value.trim() || '';
+    const email = root.querySelector('.bEmail')?.value.trim() || '';
+    if (!name) { bookingError = 'Please add your name.'; return paint(); }
+    if (!phone && !email) { bookingError = 'A phone number or an email is needed.'; return paint(); }
+
+    bookingBusy = true; bookingError = ''; paint();
+    try {
+      const res = await fetch(`${API}/api/book`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicKey: KEY, at: pickedSlot, conversationId, name, phone, email }),
+      });
+      const data = await res.json();
+      bookingBusy = false;
+      if (!res.ok) {
+        // Taken while they were typing. Re-fetch rather than leave a list with
+        // a slot on it that no longer exists.
+        if (data.error === 'taken') { bookingError = data.message || 'That time has gone.'; pickedSlot = null; await refreshSlots(); }
+        else bookingError = data.error || 'Something went wrong. Please try again.';
+        return paint();
+      }
+      bookingOffer = null; pickedSlot = null;
+      history.push({ role: 'assistant', content: (data.lines || []).join('\n') });
+      persist(); paint();
+    } catch {
+      bookingBusy = false;
+      bookingError = 'Could not reach the server. Please try again.';
+      paint();
+    }
+  }
+
+  async function refreshSlots() {
+    try {
+      const r = await fetch(`${API}/api/slots/${encodeURIComponent(KEY)}`);
+      const d = await r.json();
+      bookingOffer = d.enabled && d.days?.length ? { timezone: d.timezone, days: d.days } : null;
+      pickedDay = 0;
+    } catch { /* keep the stale list rather than blanking the picker */ }
   }
 
   async function send(preset) {
@@ -395,6 +537,7 @@
       conversationId = data.conversationId || conversationId;
       busy = false;
       suggestions = data.suggestions || [];
+      if (data.booking?.days?.length) { bookingOffer = data.booking; pickedDay = 0; pickedSlot = null; bookingError = ''; }
       history.push({ role: 'assistant', content: data.answer });
       if (!open) { unread++; render(); } else { paint(); }
       persist();

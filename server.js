@@ -7,7 +7,9 @@ import { fileURLToPath } from 'node:url';
 import * as store from './lib/store.js';
 import * as auth from './lib/auth.js';
 import * as health from './lib/health.js';
-import { notifyLead, channelsConfigured, notifyStatus } from './lib/notify.js';
+import { notifyLead, channelsConfigured, notifyStatus, sendMail } from './lib/notify.js';
+import * as booking from './lib/booking.js';
+import { bookingSettings } from './lib/booking.js';
 import * as brevo from './lib/brevo.js';
 import { create as createBackup } from './scripts/backup.js';
 import { buildIndex, bm25, fuse, cosine, cacheLookup, cacheStore, cacheClear } from './lib/retrieve.js';
@@ -134,8 +136,189 @@ app.get('/api/config/:publicKey', (req, res) => {
     fontFamily: s.fontFamily || '',
     fontUrl: s.fontUrl || '',
     tenant: tenant.name,
+    // Lets the widget show a slot picker instead of asking for a preferred
+    // time in prose.
+    booking: Boolean(bookingSettings(tenant).enabled),
   });
 });
+
+// =======================================================================
+// BOOKING — public
+// =======================================================================
+
+// Free slots, grouped by day. Public, because the widget runs on the client's
+// own site and has only the public key. It gives away opening hours and which
+// times are busy, which is what a "book with us" page shows anyway.
+app.get('/api/slots/:publicKey', (req, res) => {
+  const tenant = store.findByPublicKey(req.params.publicKey);
+  if (!tenant) return res.status(404).json({ error: 'Unknown workspace key.' });
+  if (tenant.settings.suspended) return res.json({ enabled: false, days: [] });
+  const cfg = bookingSettings(tenant);
+  if (!cfg.enabled) return res.json({ enabled: false, days: [] });
+  // Sweeping on read keeps abandoned holds from lingering in a quiet workspace
+  // where nothing else would trigger a sweep.
+  if (booking.expireHolds(tenant)) store.save(tenant.id);
+  res.json({
+    enabled: true,
+    timezone: cfg.timezone,
+    days: booking.freeSlots(tenant, { days: cfg.horizonDays, perDay: 10, maxDays: 6 }),
+  });
+});
+
+// Take a slot. One synchronous critical section, then the slow work.
+app.post('/api/book', async (req, res) => {
+  const { publicKey, at, conversationId, name, phone, email, reason } = req.body || {};
+  const tenant = store.findByPublicKey(publicKey);
+  if (!tenant) return res.status(404).json({ error: 'Unknown workspace key.' });
+  if (tenant.settings.suspended) return res.status(403).json({ error: 'Booking is unavailable.' });
+
+  const cfg = bookingSettings(tenant);
+  if (!cfg.enabled) return res.status(400).json({ error: 'Booking is not available.' });
+  if (rateLimited(`${tenant.id}:book:${req.ip}`)) {
+    return res.status(429).json({ error: 'Too many attempts. Please try again shortly.' });
+  }
+
+  const convId = String(conversationId || '').slice(0, 64) || store.id();
+  const details = cleanLead({ name, phone, email });
+  if (!details.name) return res.status(400).json({ error: 'A name is needed for the appointment.' });
+  if (!details.phone && !details.email) {
+    return res.status(400).json({ error: 'A phone number or an email address is needed.' });
+  }
+
+  // --- critical section: no await from here until the write ---
+  const held = booking.hold(tenant, at, convId, { minutes: 10 });
+  if (held.error === 'already-booked') {
+    return res.json({ ok: true, already: true, at: held.booking.at,
+      when: booking.formatSlot(held.booking.at, cfg.timezone) });
+  }
+  if (held.error === 'taken') return res.status(409).json({ error: 'taken', message: 'Sorry — that time has just been taken. Please pick another.' });
+  if (held.error) return res.status(400).json({ error: held.error });
+
+  const done = booking.confirm(tenant, convId, { ...details, reason });
+  if (done.error === 'taken') return res.status(409).json({ error: 'taken', message: 'Sorry — that time has just been taken. Please pick another.' });
+  if (done.error) return res.status(400).json({ error: done.error });
+  store.save(tenant.id);
+  store.flush();
+  // --- end critical section ---
+
+  // The appointment is safely on disk. Everything after this is delivery, and
+  // a failing mail server must never cost the visitor their slot.
+  const lead = mergeLead(tenant, convId, {
+    ...details,
+    intent: reason || `appointment ${booking.formatSlot(done.booking.at, cfg.timezone)}`,
+  });
+  if (lead) {
+    lead.bookingId = done.booking.id;
+    lead.bookedAt = done.booking.at;
+    done.booking.leadId = lead.id;
+    store.save(tenant.id);
+  }
+
+  sendBookingMail(tenant, done.booking, 'confirmation').catch((e) => console.error('[booking mail]', e.message));
+  if (lead) notifyLead(tenant, lead).catch((e) => console.error('[booking notify]', e.message));
+
+  res.json({
+    ok: true,
+    at: done.booking.at,
+    when: done.when,
+    manageUrl: manageUrl(tenant, done.booking),
+    lines: booking.confirmationLines(tenant, done.booking, { manageUrl: manageUrl(tenant, done.booking) }),
+  });
+});
+
+// The link in the confirmation email. Token only — no sign-in, because a
+// patient has no account and never will.
+app.get('/api/booking/:tenantId/:token', (req, res) => {
+  const tenant = safeTenant(req.params.tenantId);
+  if (!tenant) return res.status(404).json({ error: 'Not found.' });
+  const b = booking.findByToken(tenant, req.params.token);
+  if (!b) return res.status(404).json({ error: 'That booking link is not valid.' });
+  const cfg = bookingSettings(tenant);
+  res.json({
+    business: tenant.name,
+    status: b.status,
+    at: b.at,
+    when: booking.formatSlot(b.at, cfg.timezone),
+    name: b.name || '',
+    address: cfg.address || '',
+    mapsUrl: booking.mapsLink(cfg),
+    note: cfg.bringNote || '',
+    cancellationNote: cfg.cancellationNote || '',
+  });
+});
+
+app.post('/api/booking/:tenantId/:token/cancel', (req, res) => {
+  const tenant = safeTenant(req.params.tenantId);
+  if (!tenant) return res.status(404).json({ error: 'Not found.' });
+  const b = booking.findByToken(tenant, req.params.token);
+  if (!b) return res.status(404).json({ error: 'That booking link is not valid.' });
+  if (b.status === 'cancelled') return res.json({ ok: true, already: true });
+  booking.cancel(tenant, b, 'visitor');
+  store.save(tenant.id);
+  store.flush();
+  // The clinic needs to know a slot has opened up as much as it needed to know
+  // it was taken.
+  notifyOperatorOfCancellation(tenant, b).catch(() => {});
+  res.json({ ok: true });
+});
+
+// Subscribe to this in Google Calendar or Outlook and the clinic's own diary
+// shows what the bot has booked. One-way and read-only: no OAuth, no tokens to
+// refresh, nothing a client can revoke by accident.
+app.get('/api/calendar/:tenantId/:key.ics', (req, res) => {
+  const tenant = safeTenant(req.params.tenantId);
+  if (!tenant || !tenant.calendarKey || req.params.key !== tenant.calendarKey) {
+    return res.status(404).type('text/plain').send('Not found');
+  }
+  res.type('text/calendar; charset=utf-8')
+    .set('Content-Disposition', `inline; filename="${tenant.id}-bookings.ics"`)
+    .send(booking.icsFeed(tenant));
+});
+
+// A tenant id out of a URL must never be able to reach another file on disk.
+function safeTenant(raw) {
+  const id = String(raw || '').replace(/[^a-z0-9-]/gi, '');
+  if (!id) return null;
+  try { return store.listTenants().some((t) => t.id === id) ? store.load(id) : null; }
+  catch { return null; }
+}
+
+function manageUrl(tenant, b) {
+  const base = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+  if (!base || !b.token) return '';
+  return `${base}/booking.html?w=${encodeURIComponent(tenant.id)}&t=${encodeURIComponent(b.token)}`;
+}
+
+// The patient's own confirmation and reminder. Separate from notifyLead, which
+// goes to the CLIENT — this one is addressed to the person who booked, so it
+// is written to them and carries the address and the map.
+async function sendBookingMail(tenant, b, kind) {
+  if (!b.email) return { skipped: 'no-email' };
+  const cfg = bookingSettings(tenant);
+  const url = manageUrl(tenant, b);
+  const lines = kind === 'reminder'
+    ? booking.reminderLines(tenant, b, { manageUrl: url })
+    : booking.confirmationLines(tenant, b, { manageUrl: url });
+  const subject = kind === 'reminder'
+    ? `Reminder: your appointment with ${tenant.name}, ${booking.formatSlot(b.at, cfg.timezone)}`
+    : `Appointment confirmed — ${tenant.name}, ${booking.formatSlot(b.at, cfg.timezone)}`;
+  return sendMail([b.email], subject, lines);
+}
+
+async function notifyOperatorOfCancellation(tenant, b) {
+  const cfg = bookingSettings(tenant);
+  const to = String(tenant.settings.notifyEmail || '').split(/[,\s]+/).filter(Boolean);
+  if (!to.length) return;
+  return sendMail(to, `Cancelled: ${b.name || 'appointment'} — ${booking.formatSlot(b.at, cfg.timezone)}`, [
+    `${b.name || 'A visitor'} has cancelled their appointment.`,
+    '',
+    `Was: ${booking.formatSlot(b.at, cfg.timezone)}`,
+    b.phone ? `Phone: ${b.phone}` : null,
+    b.email ? `Email: ${b.email}` : null,
+    '',
+    'The slot is free again and the bot can offer it to someone else.',
+  ].filter((l) => l !== null));
+}
 
 app.post('/api/chat', async (req, res) => {
   const { publicKey, message, conversationId, history = [] } = req.body || {};
@@ -373,11 +556,26 @@ app.post('/api/chat', async (req, res) => {
         : tenant.settings.handoffMessage;
     }
 
+    // Someone asking to book, on a workspace that can actually book them in.
+    //
+    // The picker is returned with the reply rather than being asked for in
+    // prose: "what day suits you?" costs three more turns and still ends in a
+    // human reading "Tuesday-ish". Tapping a real time ends the conversation
+    // in one move, and it is the only way the slot can be checked as it is
+    // chosen.
+    let offer = null;
+    const cfgNow = bookingSettings(tenant);
+    if (cfgNow.enabled && WANTS_TO_ACT.test(message) && !alreadyBooked(tenant, convId)) {
+      const days = booking.freeSlots(tenant, { days: cfgNow.horizonDays, perDay: 8, maxDays: 5 });
+      if (days.length) offer = { timezone: cfgNow.timezone, days };
+    }
+
     res.json({
       answer: reply.answer,
       conversationId: convId,
       handoff: reply.handoff,
-      suggestions: reply.suggestions,
+      suggestions: offer ? [] : reply.suggestions,
+      booking: offer,
       sources: results.map((r) => r.chunk.url).filter(Boolean).slice(0, 2),
     });
   } catch (err) {
@@ -1369,6 +1567,125 @@ app.post('/api/admin/:tenantId/channels/unblock', requireAdmin, requireTenant, r
     res.status(502).json({ error: e.message });
   }
 });
+
+// =======================================================================
+// BOOKING — admin
+// =======================================================================
+
+app.get('/api/admin/:tenantId/bookings', requireAdmin, requireTenant, (req, res) => {
+  const t = store.load(req.params.tenantId);
+  const cfg = bookingSettings(t);
+  if (booking.expireHolds(t)) store.save(t.id);
+  const days = Math.min(120, Math.max(1, Number(req.query.days) || 30));
+  const rows = booking.upcoming(t, { days, includeCancelled: req.query.all === '1' });
+  res.json({
+    enabled: cfg.enabled,
+    timezone: cfg.timezone,
+    calendarUrl: calendarUrl(t),
+    bookings: rows.map((b) => ({
+      id: b.id, at: b.at, status: b.status, minutes: b.minutes,
+      when: booking.formatSlot(b.at, cfg.timezone),
+      day: booking.formatDayHeading(b.at, cfg.timezone),
+      time: booking.formatTimeOnly(b.at, cfg.timezone),
+      name: b.name || '', phone: b.phone || '', email: b.email || '',
+      reason: b.reason || '', createdAt: b.createdAt,
+    })),
+    blocks: (t.blocks || []).map((b) => ({
+      ...b,
+      fromLabel: booking.formatSlot(b.from, cfg.timezone),
+      toLabel: booking.formatSlot(b.to, cfg.timezone),
+    })).sort((a, z) => a.from.localeCompare(z.from)),
+  });
+});
+
+app.post('/api/admin/:tenantId/bookings/:id/cancel', requireAdmin, requireTenant, async (req, res) => {
+  const t = store.load(req.params.tenantId);
+  const b = (t.bookings || []).find((x) => x.id === req.params.id);
+  if (!b) return res.status(404).json({ error: 'That booking no longer exists.' });
+  booking.cancel(t, b, 'clinic');
+  store.save(t.id);
+  store.flush();
+  // Someone is expecting to be seen. Telling them is not optional.
+  if (b.email) {
+    const cfg = bookingSettings(t);
+    sendMail([b.email], `Your appointment with ${t.name} has been cancelled`, [
+      `Your appointment on ${booking.formatSlot(b.at, cfg.timezone)} has been cancelled.`,
+      '',
+      'Please get in touch to arrange another time — we are sorry for the inconvenience.',
+      t.settings.notifyEmail ? `You can reply to this message.` : null,
+    ].filter((l) => l !== null)).catch((e) => console.error('[cancel mail]', e.message));
+  }
+  res.json({ ok: true, notified: Boolean(b.email) });
+});
+
+// Time taken off the market by hand: holidays, lunch, and the appointments
+// the clinic took over the phone.
+app.post('/api/admin/:tenantId/blocks', requireAdmin, requireTenant, (req, res) => {
+  const t = store.load(req.params.tenantId);
+  try {
+    const b = booking.addBlock(t, req.body?.from, req.body?.to, req.body?.reason);
+    store.save(t.id);
+    store.flush();
+    res.json({ ok: true, block: b });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.delete('/api/admin/:tenantId/blocks/:id', requireAdmin, requireTenant, (req, res) => {
+  const t = store.load(req.params.tenantId);
+  const before = (t.blocks || []).length;
+  t.blocks = (t.blocks || []).filter((b) => b.id !== req.params.id);
+  store.save(t.id);
+  store.flush();
+  res.json({ ok: true, removed: before - t.blocks.length });
+});
+
+// Offering a picker to someone who has already booked in this conversation is
+// how you end up with two appointments for one person.
+function alreadyBooked(tenant, convId) {
+  return (tenant.bookings || []).some((b) => b.conversationId === convId && b.status === 'confirmed');
+}
+
+function calendarUrl(t) {
+  const base = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+  if (!base || !t.calendarKey) return '';
+  return `${base}/api/calendar/${t.id}/${t.calendarKey}.ics`;
+}
+
+// --- reminders ---------------------------------------------------------
+//
+// Swept rather than scheduled. A timer per booking does not survive a restart,
+// and Railway restarts on every deploy; a sweep rebuilds the whole picture
+// from what is on disk, so a redeploy in the middle of the night costs nothing.
+// The "sent" flag lives on the booking for the same reason — it is the only
+// thing standing between a restart and reminding everyone twice.
+async function sweepReminders() {
+  for (const meta of store.listTenants()) {
+    let t;
+    try { t = store.load(meta.id); } catch { continue; }
+    const due = booking.remindersDue(t);
+    if (!due.length) continue;
+    for (const b of due) {
+      // Marked before sending, not after. A provider that accepts the mail and
+      // then throws would otherwise send it again on the next sweep, and every
+      // sweep after that.
+      b.reminderSentAt = new Date().toISOString();
+      store.save(t.id);
+      try {
+        await sendBookingMail(t, b, 'reminder');
+        console.log(`[reminder] ${t.id} ${b.id} → ${b.email || '(no email)'}`);
+      } catch (e) {
+        console.error('[reminder]', t.id, b.id, e.message);
+      }
+    }
+    store.flush();
+  }
+}
+
+// Every fifteen minutes is close enough for a day-ahead reminder and costs
+// nothing — these routes only read local JSON.
+setInterval(() => { sweepReminders().catch((e) => console.error('[reminder sweep]', e.message)); },
+  15 * 60 * 1000).unref();
+setTimeout(() => { sweepReminders().catch(() => {}); }, 30000).unref();
 
 // Nightly snapshot, in-process so there is nothing extra to configure. Set
 // BACKUP_UPLOAD=1 once an off-server target is in .env.
