@@ -188,8 +188,17 @@ app.post('/api/book', async (req, res) => {
   // --- critical section: no await from here until the write ---
   const held = booking.hold(tenant, at, convId, { minutes: 10 });
   if (held.error === 'already-booked') {
-    return res.json({ ok: true, already: true, at: held.booking.at,
-      when: booking.formatSlot(held.booking.at, cfg.timezone) });
+    // Same conversation, second attempt. Answer with the booking they already
+    // have rather than an empty bubble — which is what an absent `lines` used
+    // to produce here.
+    const url = manageUrl(tenant, held.booking);
+    return res.json({
+      ok: true, already: true,
+      at: held.booking.at,
+      when: booking.formatSlot(held.booking.at, cfg.timezone),
+      lines: booking.confirmationLines(tenant, held.booking, { manageUrl: url }),
+      card: bookingCard(tenant, held.booking, cfg, url, true),
+    });
   }
   if (held.error === 'taken') return res.status(409).json({ error: 'taken', message: 'Sorry — that time has just been taken. Please pick another.' });
   if (held.error) return res.status(400).json({ error: held.error });
@@ -217,12 +226,17 @@ app.post('/api/book', async (req, res) => {
   sendBookingMail(tenant, done.booking, 'confirmation').catch((e) => console.error('[booking mail]', e.message));
   if (lead) notifyLead(tenant, lead).catch((e) => console.error('[booking notify]', e.message));
 
+  const url = manageUrl(tenant, done.booking);
   res.json({
     ok: true,
     at: done.booking.at,
     when: done.when,
-    manageUrl: manageUrl(tenant, done.booking),
-    lines: booking.confirmationLines(tenant, done.booking, { manageUrl: manageUrl(tenant, done.booking) }),
+    manageUrl: url,
+    // `lines` is the plain-text version, kept as the message the model sees in
+    // conversation history. `card` is the same facts in pieces so the widget
+    // can lay them out instead of printing a URL across three lines.
+    lines: booking.confirmationLines(tenant, done.booking, { manageUrl: url }),
+    card: bookingCard(tenant, done.booking, cfg, url, false),
   });
 });
 
@@ -289,6 +303,24 @@ function manageUrl(tenant, b) {
   return `${base}/booking.html?w=${encodeURIComponent(tenant.id)}&t=${encodeURIComponent(b.token)}`;
 }
 
+// The confirmation in pieces, for the widget to lay out. The same facts the
+// email carries, but as fields rather than a block of text: a raw manage URL
+// printed into a chat bubble wraps over three lines and looks like a mistake.
+function bookingCard(tenant, b, cfg, url, already) {
+  return {
+    already: Boolean(already),
+    business: tenant.name || '',
+    day: booking.formatDayHeading(b.at, cfg.timezone),
+    time: booking.formatTimeOnly(b.at, cfg.timezone),
+    name: b.name || '',
+    address: cfg.address || '',
+    mapsUrl: booking.mapsLink(cfg) || '',
+    note: cfg.bringNote || '',
+    cancellationNote: cfg.cancellationNote || '',
+    manageUrl: url || '',
+  };
+}
+
 // The patient's own confirmation and reminder. Separate from notifyLead, which
 // goes to the CLIENT — this one is addressed to the person who booked, so it
 // is written to them and carries the address and the map.
@@ -299,17 +331,28 @@ async function sendBookingMail(tenant, b, kind) {
   const lines = kind === 'reminder'
     ? booking.reminderLines(tenant, b, { manageUrl: url })
     : booking.confirmationLines(tenant, b, { manageUrl: url });
+  // Business name first, the way notifyLead already does it. A patient scanning
+  // an inbox recognises their dentist, not the word "appointment"; and an
+  // agency owner copied on several workspaces can tell them apart at a glance.
+  const when = booking.formatSlot(b.at, cfg.timezone);
   const subject = kind === 'reminder'
-    ? `Reminder: your appointment with ${tenant.name}, ${booking.formatSlot(b.at, cfg.timezone)}`
-    : `Appointment confirmed — ${tenant.name}, ${booking.formatSlot(b.at, cfg.timezone)}`;
-  return sendMail([b.email], subject, lines);
+    ? `${tenant.name} — appointment reminder, ${when}`
+    : `${tenant.name} — booking confirmed, ${when}`;
+  // The display name follows the subject, so the sender column reads as the
+  // business too. The address itself stays the verified one.
+  const replyTo = String(tenant.settings.notifyEmail || '').split(/[,\s]+/).filter(Boolean)[0] || '';
+  return sendMail([b.email], subject, lines, {
+    fromName: tenant.name,
+    ...(replyTo ? { replyTo, replyToName: tenant.name } : {}),
+  });
 }
 
 async function notifyOperatorOfCancellation(tenant, b) {
   const cfg = bookingSettings(tenant);
   const to = String(tenant.settings.notifyEmail || '').split(/[,\s]+/).filter(Boolean);
   if (!to.length) return;
-  return sendMail(to, `Cancelled: ${b.name || 'appointment'} — ${booking.formatSlot(b.at, cfg.timezone)}`, [
+  const subject = `${tenant.name} — booking cancelled, ${booking.formatSlot(b.at, cfg.timezone)}`;
+  return sendMail(to, subject, [
     `${b.name || 'A visitor'} has cancelled their appointment.`,
     '',
     `Was: ${booking.formatSlot(b.at, cfg.timezone)}`,
@@ -317,7 +360,10 @@ async function notifyOperatorOfCancellation(tenant, b) {
     b.email ? `Email: ${b.email}` : null,
     '',
     'The slot is free again and the bot can offer it to someone else.',
-  ].filter((l) => l !== null));
+  ].filter((l) => l !== null), {
+    fromName: tenant.name,
+    ...(b.email ? { replyTo: b.email, replyToName: b.name || '' } : {}),
+  });
 }
 
 app.post('/api/chat', async (req, res) => {
@@ -1576,25 +1622,59 @@ app.get('/api/admin/:tenantId/bookings', requireAdmin, requireTenant, (req, res)
   const t = store.load(req.params.tenantId);
   const cfg = bookingSettings(t);
   if (booking.expireHolds(t)) store.save(t.id);
-  const days = Math.min(120, Math.max(1, Number(req.query.days) || 30));
-  const rows = booking.upcoming(t, { days, includeCancelled: req.query.all === '1' });
+
+  // Everything is dated in the practice's zone, here, once. The browser's zone
+  // is the agency's, not the client's — a Toronto clinic administered from
+  // Karachi must not have its Tuesday appointments drawn on Wednesday.
+  const today = booking.localParts(new Date(), cfg.timezone).date;
+  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(req.query.month || ''))
+    ? String(req.query.month)
+    : today.slice(0, 7);
+
+  const nowIso = new Date().toISOString();
+  const decorate = (b) => ({
+    id: b.id, at: b.at, status: b.status, minutes: b.minutes,
+    date: booking.localParts(new Date(b.at), cfg.timezone).date,
+    when: booking.formatSlot(b.at, cfg.timezone),
+    day: booking.formatDayHeading(b.at, cfg.timezone),
+    time: booking.formatTimeOnly(b.at, cfg.timezone),
+    name: b.name || '', phone: b.phone || '', email: b.email || '',
+    reason: b.reason || '', createdAt: b.createdAt,
+  });
+
+  const live = (t.bookings || []).filter((b) => b.status === 'confirmed');
+  const all = live.map(decorate).sort((a, z) => a.at.localeCompare(z.at));
+
   res.json({
     enabled: cfg.enabled,
     timezone: cfg.timezone,
     calendarUrl: calendarUrl(t),
-    bookings: rows.map((b) => ({
-      id: b.id, at: b.at, status: b.status, minutes: b.minutes,
-      when: booking.formatSlot(b.at, cfg.timezone),
-      day: booking.formatDayHeading(b.at, cfg.timezone),
-      time: booking.formatTimeOnly(b.at, cfg.timezone),
-      name: b.name || '', phone: b.phone || '', email: b.email || '',
-      reason: b.reason || '', createdAt: b.createdAt,
-    })),
-    blocks: (t.blocks || []).map((b) => ({
-      ...b,
-      fromLabel: booking.formatSlot(b.from, cfg.timezone),
-      toLabel: booking.formatSlot(b.to, cfg.timezone),
-    })).sort((a, z) => a.from.localeCompare(z.from)),
+    today,
+    month,
+    monthLabel: new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', month: 'long', year: 'numeric' })
+      .format(new Date(`${month}-01T12:00:00Z`)),
+    // Which weekdays the practice opens at all, so the grid can grey out the
+    // days nobody could ever be booked on.
+    openDays: [0, 1, 2, 3, 4, 5, 6].map((d) => (cfg.hours?.[d] || []).length > 0),
+    // The sidebar badge counts what is still to come, not what the open month
+    // happens to hold — "3" next to Bookings has to mean three people coming.
+    upcomingCount: all.filter((b) => b.at >= nowIso).length,
+    nextUp: all.find((b) => b.at >= nowIso) || null,
+    bookings: all.filter((b) => b.date.startsWith(month)),
+    blocks: (t.blocks || [])
+      .filter((b) => {
+        const from = booking.localParts(new Date(b.from), cfg.timezone).date;
+        const to = booking.localParts(new Date(b.to), cfg.timezone).date;
+        return from.slice(0, 7) <= month && to.slice(0, 7) >= month;   // overlaps the month
+      })
+      .map((b) => ({
+        ...b,
+        fromDate: booking.localParts(new Date(b.from), cfg.timezone).date,
+        toDate: booking.localParts(new Date(b.to), cfg.timezone).date,
+        fromLabel: booking.formatSlot(b.from, cfg.timezone),
+        toLabel: booking.formatSlot(b.to, cfg.timezone),
+      }))
+      .sort((a, z) => a.from.localeCompare(z.from)),
   });
 });
 
@@ -1608,12 +1688,16 @@ app.post('/api/admin/:tenantId/bookings/:id/cancel', requireAdmin, requireTenant
   // Someone is expecting to be seen. Telling them is not optional.
   if (b.email) {
     const cfg = bookingSettings(t);
-    sendMail([b.email], `Your appointment with ${t.name} has been cancelled`, [
+    const replyTo = String(t.settings.notifyEmail || '').split(/[,\s]+/).filter(Boolean)[0] || '';
+    sendMail([b.email], `${t.name} — your appointment has been cancelled`, [
       `Your appointment on ${booking.formatSlot(b.at, cfg.timezone)} has been cancelled.`,
       '',
       'Please get in touch to arrange another time — we are sorry for the inconvenience.',
-      t.settings.notifyEmail ? `You can reply to this message.` : null,
-    ].filter((l) => l !== null)).catch((e) => console.error('[cancel mail]', e.message));
+      replyTo ? 'You can reply to this message.' : null,
+    ].filter((l) => l !== null), {
+      fromName: t.name,
+      ...(replyTo ? { replyTo, replyToName: t.name } : {}),
+    }).catch((e) => console.error('[cancel mail]', e.message));
   }
   res.json({ ok: true, notified: Boolean(b.email) });
 });

@@ -223,6 +223,38 @@
         .bookPicked b { font-weight: 600; }
         .bookErr { font-size: 12.5px; color: #C2453B; }
         .bookNote { font-size: 11.5px; color: #6b7280; }
+
+        /* The confirmation. This is the moment the visitor screenshots or
+           reads back to someone, so the date and time are the largest thing
+           in it and the manage link is a button rather than a printed URL. */
+        /* flex: none is load-bearing. The log is a flex column, and a flex item
+           only refuses to shrink below its content while its overflow is
+           visible — this card clips its corners with overflow: hidden, which
+           drops that protection and let a busy conversation squash the card to
+           a two-pixel sliver. */
+        .bookDone { align-self: stretch; max-width: 100%; flex: none; background: #fff;
+                    border: 1px solid rgba(0,0,0,.09); border-radius: 13px;
+                    padding: 0; overflow: hidden; white-space: normal; }
+        .bookDoneTop { display: flex; align-items: center; gap: 8px; padding: 11px 14px;
+                       background: ${config.accent}; color: ${ON}; font-size: 13.5px; font-weight: 600; }
+        .bookTick { width: 18px; height: 18px; flex: none; border-radius: 99px;
+                    background: ${ON}; color: ${config.accent}; display: grid; place-items: center; }
+        .bookTick svg { width: 11px; height: 11px; display: block; }
+        .bookDoneBody { padding: 13px 14px; }
+        .bookWhen { font-size: 17px; font-weight: 700; line-height: 1.3; color: #16181D; letter-spacing: -.01em; }
+        .bookWhen span { display: block; font-size: 13px; font-weight: 500; color: #6b7280;
+                         letter-spacing: 0; margin-top: 1px; }
+        .bookMeta { margin-top: 11px; display: grid; gap: 7px; font-size: 13px; color: #16181D; line-height: 1.45; }
+        .bookMeta div { display: flex; gap: 8px; align-items: flex-start; }
+        .bookMeta svg { width: 14px; height: 14px; flex: none; margin-top: 2px; color: #6b7280; }
+        .bookMeta a { color: ${INK}; text-decoration: underline; }
+        .bookTip { margin-top: 11px; font-size: 12.5px; color: #6b7280; line-height: 1.45;
+                   background: #F6F6F4; border-radius: 8px; padding: 9px 11px; }
+        .bookManage { display: block; margin-top: 12px; text-align: center; text-decoration: none;
+                      border: 1px solid rgba(0,0,0,.14); border-radius: 9px; padding: 10px;
+                      font-size: 13.5px; font-weight: 600; color: #16181D; background: #fff; }
+        .bookManage:hover { border-color: ${config.accent}; color: ${INK}; }
+
         @media (max-width: 520px) {
           .bookTimes { grid-template-columns: repeat(3, 1fr); }
           .bookForm input { font-size: 16px; }
@@ -381,7 +413,10 @@
     const log = root.querySelector('.log');
     if (!log) return;
     log.innerHTML = history
-      .map((m) => `<div class="msg ${m.role === 'user' ? 'me' : 'bot'}">${m.role === 'user' ? esc(m.content) : linkify(m.content)}</div>`)
+      .map((m) => {
+        if (m.card) return bookingCardHtml(m.card);
+        return `<div class="msg ${m.role === 'user' ? 'me' : 'bot'}">${m.role === 'user' ? esc(m.content) : linkify(m.content)}</div>`;
+      })
       .join('');
     // The menu appears once, under the greeting, before the visitor has typed.
     if (!busy && menuShown && history.length === 1 && config.quickReplies?.length) {
@@ -403,6 +438,11 @@
       log.querySelectorAll('.chip').forEach((b) => { b.addEventListener('click', () => send(b.textContent)); });
     }
     log.scrollTop = log.scrollHeight;
+    // And again on the next frame. The confirmation card is the tallest thing
+    // this log ever holds, and anything that settles after the synchronous
+    // pass — a webfont swapping in, the card's own wrapping — leaves the first
+    // scroll short and the card clipped at the bottom.
+    requestAnimationFrame(() => { log.scrollTop = log.scrollHeight; });
     root.querySelector('.send').disabled = busy;
   }
 
@@ -417,6 +457,36 @@
   let pickedSlot = null;
   let bookingBusy = false;
   let bookingError = '';
+
+  // The confirmation, drawn from the fields the server sends rather than from
+  // the plain-text version. Every piece is optional: a practice that has not
+  // filled in an address simply gets a card without that row, not an empty one.
+  function bookingCardHtml(c) {
+    const pin = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 14.5s5-4.2 5-8a5 5 0 0 0-10 0c0 3.8 5 8 5 8z"/><circle cx="8" cy="6.4" r="1.8"/></svg>';
+    const person = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5.4" r="2.6"/><path d="M2.8 14c0-2.8 2.3-4.6 5.2-4.6s5.2 1.8 5.2 4.6"/></svg>';
+    const rows = [];
+    if (c.name) rows.push(`<div>${person}<span>${esc(c.name)}</span></div>`);
+    if (c.address) {
+      const where = c.mapsUrl
+        ? `<span>${esc(c.address)}<br><a href="${esc(c.mapsUrl)}" target="_blank" rel="noopener">Get directions</a></span>`
+        : `<span>${esc(c.address)}</span>`;
+      rows.push(`<div>${pin}${where}</div>`);
+    }
+    const tips = [c.note, c.cancellationNote].filter(Boolean).map(esc).join('<br>');
+    return `
+      <div class="bookDone">
+        <div class="bookDoneTop">
+          <span class="bookTick" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.4 6.6 11.5 12.5 5"/></svg></span>
+          <span>${c.already ? 'You are already booked in' : 'Appointment confirmed'}</span>
+        </div>
+        <div class="bookDoneBody">
+          <div class="bookWhen">${esc(c.time)}<span>${esc(c.day)}</span></div>
+          ${rows.length ? `<div class="bookMeta">${rows.join('')}</div>` : ''}
+          ${tips ? `<div class="bookTip">${tips}</div>` : ''}
+          ${c.manageUrl ? `<a class="bookManage" href="${esc(c.manageUrl)}" target="_blank" rel="noopener">Change or cancel</a>` : ''}
+        </div>
+      </div>`;
+  }
 
   function paintBooking(log) {
     const days = bookingOffer.days || [];
@@ -499,7 +569,14 @@
         return paint();
       }
       bookingOffer = null; pickedSlot = null;
-      history.push({ role: 'assistant', content: (data.lines || []).join('\n') });
+      // `content` is what the model reads back as context; `card` is what the
+      // visitor sees. Keeping both means a page reload redraws the card rather
+      // than falling back to the raw text.
+      history.push({
+        role: 'assistant',
+        content: (data.lines || []).join('\n') || `Your appointment is confirmed for ${data.when || ''}.`.trim(),
+        card: data.card || null,
+      });
       persist(); paint();
     } catch {
       bookingBusy = false;
@@ -531,7 +608,10 @@
       const res = await fetch(`${API}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publicKey: KEY, message: text, conversationId, history: history.slice(0, -1).slice(-8) }),
+        // Stripped to role and content on the way out: a history entry can now
+        // carry a `card` object for rendering, and the model has no use for it.
+        body: JSON.stringify({ publicKey: KEY, message: text, conversationId,
+          history: history.slice(0, -1).slice(-8).map((m) => ({ role: m.role, content: m.content })) }),
       });
       const data = await res.json();
       conversationId = data.conversationId || conversationId;
