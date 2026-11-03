@@ -385,6 +385,43 @@
      auto-fit means the row becomes a column on its own at narrow widths with
      no extra media query to keep in sync. */
   .fieldRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 18px; }
+
+  /* ---- bookings ---- */
+  .toggleRow { display: flex; align-items: center; gap: 9px; font-weight: 500; margin-bottom: 14px; cursor: pointer; }
+  .toggleRow input { width: 17px; height: 17px; accent-color: var(--pine); cursor: pointer; }
+  .hoursGrid { display: grid; gap: 7px; margin-top: 4px; }
+  .hoursRow { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: center; }
+  .hoursRow > span { font-size: 13px; font-weight: 500; }
+  .hoursRow input { font-family: var(--mono); font-size: 13px; }
+  .hoursRow input::placeholder { font-family: var(--body); }
+  /* A day's appointments under one heading, so the eye lands on "Tuesday"
+     rather than on fourteen rows that all look the same. */
+  .bkDay { margin-bottom: 16px; }
+  .bkDayHead { display: flex; align-items: baseline; gap: 9px; margin-bottom: 7px; }
+  .bkDayHead h3 { font-family: var(--display); font-size: 14.5px; font-weight: 700; letter-spacing: -.01em; }
+  .bkDayHead span { font-size: 12px; color: var(--muted); }
+  .bkRow { display: grid; grid-template-columns: 78px 1fr auto; gap: 12px; align-items: center;
+    background: var(--card); border: 1px solid var(--mist); border-radius: 10px; padding: 11px 13px; margin-bottom: 6px;
+    transition: border-color .16s; }
+  .bkRow:hover { border-color: color-mix(in srgb, var(--pine) 32%, var(--mist)); }
+  .bkTime { font-family: var(--mono); font-size: 14px; font-weight: 500; }
+  .bkWho { min-width: 0; }
+  .bkWho b { display: block; font-size: 14px; font-weight: 600; }
+  .bkWho small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bkSoon { border-color: color-mix(in srgb, var(--brass) 55%, var(--mist));
+    background: color-mix(in srgb, var(--brass) 6%, var(--card)); }
+  .blockRow { display: flex; align-items: center; gap: 12px; justify-content: space-between;
+    padding: 9px 0; border-bottom: 1px solid var(--mist); font-size: 13.5px; }
+  .blockRow:last-child { border-bottom: 0; }
+  .blockRow small { color: var(--muted); display: block; font-size: 12px; }
+  @media (max-width: 560px) {
+    .bkRow { grid-template-columns: 1fr; gap: 5px; }
+    /* On one column there is room to wrap, and a phone number cut off at the
+       ellipsis is the one thing on this row somebody needs to read. */
+    .bkWho small { white-space: normal; overflow: visible; }
+    .hoursRow { grid-template-columns: 1fr; gap: 4px; }
+  }
   .colorField { display: flex; align-items: center; gap: 10px; }
   .colorField input[type="text"] { flex: 1; min-width: 0; font-family: var(--mono); font-size: 13px; }
   .btn.tiny { flex: none; padding: 8px 11px; font-size: 12px; }
@@ -452,7 +489,37 @@
   .stats[hidden], .row[hidden], .acts[hidden], .brand img[hidden],
   .search[hidden], .barExport[hidden], .barTools[hidden],
   .convSplit[hidden], .convList[hidden], .convPane[hidden],
-  .fieldRow[hidden], .colorField[hidden], .legend[hidden] { display: none !important; }
+  .fieldRow[hidden], .colorField[hidden], .legend[hidden],
+  .pHead[hidden], .snipWrap[hidden] { display: none !important; }
+
+  /* ---- panel headers ----
+     An icon, a title and a line of explanation. The icon is an inline SVG with
+     no width of its own, so it must be given one here: left to itself it fills
+     the panel, which is exactly what it did. */
+  .pHead { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+  .pHead > div { flex: 1; min-width: 0; }
+  .pHead h2 { margin-bottom: 3px; }
+  .pHead .sub { margin: 0; }
+  .pMark { width: 30px; height: 30px; flex: none; border-radius: 9px; display: grid;
+           place-items: center; margin-top: 1px; background: var(--paper); color: var(--pine); }
+  .pMark[hidden] { display: none !important; }
+  .pMark svg { width: 17px; height: 17px; display: block; }
+  .pMark.warn { background: #FDF0DC; color: #B06A10; }
+  .pMark.code { background: #E4EBE2; color: var(--pine); }
+  .pMark.key  { background: #FBE7E3; color: var(--clay); }
+  .panel.danger .pMark { background: #F7E2DD; color: var(--clay); }
+
+  /* A long URL in a <pre> with a copy button sitting on top of it. The padding
+     on the right keeps the text from running under the button. */
+  .snipWrap { position: relative; }
+  .snipWrap pre { margin: 0; padding-right: 92px; white-space: pre-wrap; word-break: break-all; }
+  .snipCopy { position: absolute; top: 8px; right: 8px; display: inline-flex; align-items: center;
+              gap: 6px; padding: 6px 10px; border-radius: 7px; cursor: pointer; font: inherit;
+              font-size: 12px; font-weight: 500; background: rgba(255,255,255,.1);
+              color: #DCE6D8; border: 1px solid rgba(255,255,255,.22); transition: background .15s; }
+  .snipCopy:hover { background: rgba(255,255,255,.2); }
+  .snipCopy svg { width: 13px; height: 13px; flex: none; }
+
   .fontPrev { font-size: 17px; margin-top: 10px; padding: 13px 15px; background: var(--paper);
               border: 1px solid var(--mist); border-radius: 9px; }
   .loginPrev { max-width: 190px; max-height: 54px; object-fit: contain; object-position: left;
@@ -460,20 +527,24 @@
   .field { margin-bottom: 14px; }
   .field > label { display: block; font-weight: 500; margin-bottom: 5px; }
   .field .hint { color: var(--muted); font-size: 12.5px; margin-bottom: 6px; }
-  .field input[type=text], .field textarea, .field select {
-    width: 100%; border: 1px solid var(--mist); border-radius: 8px; padding: 9px 11px; background: #fff;
+  .field input[type=text], .field input[type=number], .field input[type=datetime-local],
+  .field textarea, .field select {
+    width: 100%; border: 1px solid var(--mist); border-radius: 8px; padding: 9px 11px;
+    background: #fff; font: inherit; font-size: 13.5px; color: inherit;
   }
+  /* A two-digit number in a 500px box reads as a mistake. These keep the same
+     border and padding as every other field, just not the same width. */
+  .field input[type=number] { width: 112px; }
+  .field input[type=datetime-local] { max-width: 260px; }
   .field textarea { min-height: 84px; resize: vertical; font-size: 13px; }
   input:focus, textarea:focus, select:focus { outline: 2px solid var(--pine); outline-offset: -1px; }
   .btn { background: var(--pine); color: #fff; border: 0; border-radius: 8px; padding: 9px 17px; font-weight: 500; cursor: pointer; }
+  /* The "Call" action is an <a href="tel:"> wearing .btn, and an anchor brings
+     its own underline and font with it. */
+  a.btn { text-decoration: none; display: inline-block; font: inherit; font-weight: 500; }
   .btn:hover { background: #24503F; }
   .btn.ghost { background: none; color: var(--pine); border: 1px solid var(--mist); }
   .btn.warn { background: none; color: var(--clay); border: 1px solid var(--clay); }
-  /* Quiet until you reach for it. An irreversible action should not compete
-     with Restore for attention, but it must colour up the moment it is the
-     one under the cursor. */
-  .btn.ghost.danger { color: var(--clay); border-color: color-mix(in srgb, var(--clay) 28%, var(--mist)); }
-  .btn.ghost.danger:hover { background: color-mix(in srgb, var(--clay) 8%, transparent); border-color: var(--clay); }
   .btn:disabled { opacity: .55; cursor: default; }
   .row { display: flex; gap: 9px; align-items: flex-end; flex-wrap: wrap; }
 
@@ -557,60 +628,6 @@
   .slip .none { color: #A08A6E; font-style: italic; font-size: 12.5px; }
   .slip .asked { margin-top: 15px;margin-bottom: 15px; font-size: 12.5px; color: #7A6248; line-height: 1.4; }
   .logoPrev { width: 46px; height: 46px; object-fit: cover; border-radius: 9px; border: 1px solid var(--mist); margin-top: 8px; background: #fff; }
-
-  /* ---- panel headers ----
-     The same marked header the gaps panel uses, generalised. A panel that
-     opens with an icon and a one-line explanation reads as a thing with a
-     purpose; a bare <h2> over a control reads as a form field that grew. */
-  .pHead { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 15px; }
-  .pHead > div { flex: 1; min-width: 0; }
-  .pHead h2 { margin-bottom: 3px; }
-  .pHead .sub { margin: 0; }
-  .pMark { width: 26px; height: 26px; flex: none; border-radius: 8px; display: grid; place-items: center; }
-  .pMark svg { width: 15px; height: 15px; }
-  .pMark.code { background: color-mix(in srgb, var(--pine) 11%, var(--card)); color: var(--pine); }
-  .pMark.key  { background: color-mix(in srgb, var(--brass) 18%, var(--card));
-                color: color-mix(in srgb, var(--brass) 78%, var(--ink)); }
-  .pMark.warn { background: #FBE7E3; color: var(--clay); }
-
-  /* ---- install snippet ----
-     The snippet is something you copy, not something you read, so the copy
-     control sits on it rather than under it. */
-  .snipWrap { position: relative; }
-  /* Wraps rather than scrolling sideways. A single long line slides straight
-     under the copy button and leaves half the snippet out of view; wrapped,
-     the padding keeps every line clear of the button and the whole tag can be
-     read without touching a scrollbar. */
-  .snipWrap pre { margin: 0; padding: 14px 104px 14px 14px; white-space: pre-wrap;
-    overflow-wrap: anywhere; overflow-x: visible; line-height: 1.65; }
-  .snipCopy { position: absolute; top: 9px; right: 9px; display: inline-flex; align-items: center; gap: 6px;
-    background: rgba(255,255,255,.1); color: #fff; border: 1px solid rgba(255,255,255,.22);
-    border-radius: 7px; padding: 6px 11px; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
-    transition: background .16s, border-color .16s, transform .16s cubic-bezier(.2,.8,.3,1); }
-  .snipCopy svg { width: 13px; height: 13px; }
-  .snipCopy:hover { background: rgba(255,255,255,.2); border-color: rgba(255,255,255,.4); transform: translateY(-1px); }
-  .snipCopy:active { transform: none; }
-  .snipCopy.done { background: var(--brass); color: var(--onBrass); border-color: var(--brass); }
-
-  /* ---- delete workspace ---- */
-  .dangerZone { margin-top: 26px; }
-  .dangerNote { font-size: 13px; color: #6E3C32; background: color-mix(in srgb, var(--clay) 7%, transparent);
-    border-radius: 9px; padding: 10px 13px; margin-bottom: 14px; line-height: 1.5; }
-  .dangerNote strong { color: #5C2E25; }
-  .linkTo { background: none; border: 0; padding: 0; font: inherit; color: var(--clay); font-weight: 600;
-    cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
-  /* The field and its button are one control: the button does nothing until
-     the field matches, so they should not read as two separate choices. */
-  .dangerAct { display: flex; gap: 9px; flex-wrap: wrap; }
-  .dangerAct input { flex: 1; min-width: 210px; background: var(--card); border-color: #E4C4BE; }
-  .dangerAct input:focus { outline-color: var(--clay); }
-  .dangerAct .btn { flex: none; }
-  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-
-  /* A deliberate width rather than the browser's 180px default, which looked
-     like an oversight next to the full-width fields above it. Not full width
-     either: a password box as wide as the panel invites a sentence. */
-  #pwForm .field input { width: 100%; max-width: 330px; }
 
   /* ---- gaps ---- */
   .gapPanel { margin-top: 18px; }
@@ -932,6 +949,7 @@
     <nav class="nav">
       <button data-view="overview" aria-current="true"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6A6.4 6.4 0 1 0 14.4 8H8z"/><path d="M9.4 1.6V6.6h5a5 5 0 0 0-5-5z" opacity=".55"/></svg><span>Overview</span></button>
       <button data-view="leads"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="5" r="2.6"/><path d="M1.4 14c0-2.5 2.1-4.1 4.6-4.1s4.6 1.6 4.6 4.1z"/><circle cx="12" cy="5.8" r="2" opacity=".55"/><path d="M11 9.9c2 .1 3.6 1.6 3.6 4.1h-2.8c0-1.7-.5-3-1.4-3.9z" opacity=".55"/></svg><span>Leads</span> <span class="count" id="leadCount"></span></button>
+      <button data-view="bookings" id="navBookings" hidden><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.6h12v10.8H2z" opacity=".55"/><path d="M2 3.6h12v2.6H2z"/><path d="M4.6 1.4v3M11.4 1.4v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Bookings</span> <span class="count" id="bookingCount"></span></button>
       <button data-view="conversations"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.2h12v7.4H6.6L3.4 13.4v-2.8H2z"/></svg><span>Conversations</span></button>
       <button data-view="knowledge"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2.6h4.6c.9 0 1.4.5 1.4 1.3v9.5c0-.6-.5-1-1.4-1H2z"/><path d="M14 2.6H9.4C8.5 2.6 8 3.1 8 3.9v9.5c0-.6.5-1 1.4-1H14z" opacity=".55"/></svg><span>Knowledge</span></button>
       <button data-view="settings"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 5.1A2.9 2.9 0 1 0 8 10.9 2.9 2.9 0 0 0 8 5.1zm0 1.9a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/><path d="M7 .9h2l.3 1.9 1.4.6 1.6-1.1 1.4 1.4-1.1 1.6.6 1.4 1.9.3v2l-1.9.3-.6 1.4 1.1 1.6-1.4 1.4-1.6-1.1-1.4.6-.3 1.9H7l-.3-1.9-1.4-.6-1.6 1.1-1.4-1.4 1.1-1.6-.6-1.4L.9 9V7l1.9-.3.6-1.4-1.1-1.6 1.4-1.4 1.6 1.1 1.4-.6z" opacity=".4"/></svg><span>Settings</span></button>
@@ -1064,6 +1082,74 @@
       </div>
       <div class="desk" id="board" hidden></div>
       <div class="slips" id="slips"></div>
+    </section>
+
+    <!-- CONVERSATIONS -->
+    <!-- BOOKINGS -->
+    <section class="view" id="v-bookings">
+      <h1>Bookings</h1>
+      <p class="sub">Appointments the assistant has taken, soonest first.</p>
+
+      <div class="panel" id="bookOffPanel" hidden>
+        <div class="pHead">
+          <span class="pMark warn" aria-hidden="true">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 2.6 14.6 13H1.4z"/><path d="M8 6.6v3"/><circle cx="8" cy="11.4" r=".55" fill="currentColor" stroke="none"/></svg>
+          </span>
+          <div>
+            <h2>Booking is switched off</h2>
+            <p class="sub">Set your opening hours in Settings and the assistant will start offering real times instead of taking a callback request.</p>
+          </div>
+        </div>
+        <button class="btn" type="button" data-goto="settings" data-goto-panel="#apptPanel">Open booking settings</button>
+      </div>
+
+      <div class="panel" id="bookFeedPanel" hidden>
+        <div class="pHead">
+          <span class="pMark code" aria-hidden="true">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3.4" width="12" height="10.6" rx="1.6"/><path d="M2 6.6h12M5 1.6v2.6M11 1.6v2.6"/></svg>
+          </span>
+          <div>
+            <h2>See these in your own calendar</h2>
+            <p class="sub">Subscribe to this address in Google Calendar or Outlook and every booking appears beside your other appointments. It updates on its own.</p>
+          </div>
+        </div>
+        <div class="snipWrap">
+          <pre id="calFeed">—</pre>
+          <button class="snipCopy" id="copyCalFeed" type="button">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 3.5h-7a1 1 0 0 0-1 1v7"/></svg>
+            <span>Copy</span>
+          </button>
+        </div>
+        <p class="sub" style="margin-top:10px">In Google Calendar: <b>Other calendars</b> &rarr; <b>From URL</b> &rarr; paste.</p>
+      </div>
+
+      <div id="bookList"></div>
+
+      <div class="panel" id="blockPanel" hidden>
+        <div class="pHead">
+          <span class="pMark key" aria-hidden="true">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="4" width="12" height="10" rx="1.6"/><path d="M5.5 8.5h5"/></svg>
+          </span>
+          <div>
+            <h2>Block out time</h2>
+            <p class="sub">Holidays, lunch, training &mdash; and anything you have booked in by phone, so the assistant cannot offer it to someone else.</p>
+          </div>
+        </div>
+        <div class="fieldRow">
+          <div class="field"><label for="blockFrom">From</label><input type="datetime-local" id="blockFrom" /></div>
+          <div class="field"><label for="blockTo">To</label><input type="datetime-local" id="blockTo" /></div>
+        </div>
+        <div class="field">
+          <label for="blockWhy">What for</label>
+          <input type="text" id="blockWhy" placeholder="Staff meeting" />
+        </div>
+        <button class="btn" id="addBlock" type="button">Block this time</button>
+        <div id="blockList"></div>
+      </div>
     </section>
 
     <!-- CONVERSATIONS -->
@@ -1271,6 +1357,100 @@
             <div id="logoPreview"></div>
           </div>
         </div>
+      </div>
+
+      <!-- APPOINTMENTS -->
+      <div class="panel" id="apptPanel">
+        <div class="pHead">
+          <span class="pMark code" aria-hidden="true">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3.4" width="12" height="10.6" rx="1.6"/><path d="M2 6.6h12M5 1.6v2.6M11 1.6v2.6"/></svg>
+          </span>
+          <div>
+            <h2>Appointments</h2>
+            <p class="sub">Switch this on and the assistant offers real times and books them. Leave it off and it takes a callback request instead.</p>
+          </div>
+        </div>
+
+        <label class="toggleRow"><input type="checkbox" id="bkEnabled" /> <span>Let visitors book an appointment</span></label>
+
+        <div id="bkFields" hidden>
+          <div class="fieldRow">
+            <div class="field">
+              <label for="bkTimezone">Time zone</label>
+              <div class="hint">Where the business is. Everything the visitor sees is shown in this zone, wherever they are.</div>
+              <select id="bkTimezone"></select>
+            </div>
+            <div class="field">
+              <label for="bkSlot">Appointment length</label>
+              <div class="hint">Minutes.</div>
+              <input type="number" id="bkSlot" min="5" max="480" step="5" placeholder="30" />
+            </div>
+          </div>
+          <div class="fieldRow">
+            <div class="field">
+              <label for="bkBuffer">Gap between appointments</label>
+              <div class="hint">Minutes. 0 for back to back.</div>
+              <input type="number" id="bkBuffer" min="0" max="120" step="5" placeholder="0" />
+            </div>
+            <div class="field">
+              <label for="bkLead">Earliest booking</label>
+              <div class="hint">Hours from now. Stops someone booking for twenty minutes&rsquo; time.</div>
+              <input type="number" id="bkLead" min="0" max="168" placeholder="3" />
+            </div>
+          </div>
+          <div class="fieldRow">
+            <div class="field">
+              <label for="bkHorizon">How far ahead</label>
+              <div class="hint">Days.</div>
+              <input type="number" id="bkHorizon" min="1" max="120" placeholder="21" />
+            </div>
+            <div class="field">
+              <label for="bkCapacity">At the same time</label>
+              <div class="hint">Chairs, rooms or staff. How many appointments can run at once.</div>
+              <input type="number" id="bkCapacity" min="1" max="20" placeholder="1" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Opening hours</label>
+            <div class="hint">Leave a day empty to close it. Use 24-hour times. A second range covers a lunch break &mdash; 09:00&ndash;13:00 and 14:00&ndash;17:00.</div>
+            <div id="bkHours" class="hoursGrid"></div>
+          </div>
+
+          <div class="field">
+            <label for="bkAddress">Address</label>
+            <div class="hint">Put on every confirmation, with a map link built from it.</div>
+            <input type="text" id="bkAddress" placeholder="123 Main St, Mississauga, ON L5B 1M2" />
+          </div>
+          <div class="field">
+            <label for="bkMaps">Map link</label>
+            <div class="hint">Optional. Leave empty and one is made from the address above.</div>
+            <input type="text" id="bkMaps" placeholder="https://maps.app.goo.gl/..." />
+          </div>
+          <div class="field">
+            <label for="bkBring">What to bring</label>
+            <div class="hint">Added to the confirmation and the reminder.</div>
+            <input type="text" id="bkBring" placeholder="Please bring your insurance card and a list of any medication." />
+          </div>
+          <div class="fieldRow">
+            <div class="field">
+              <label for="bkCancel">Cancellation policy</label>
+              <div class="hint">One line, shown on the confirmation.</div>
+              <input type="text" id="bkCancel" placeholder="Please give us 24 hours' notice to cancel." />
+            </div>
+            <div class="field">
+              <label for="bkRemind">Send a reminder</label>
+              <div class="hint">Hours before. 0 switches reminders off.</div>
+              <input type="number" id="bkRemind" min="0" max="168" placeholder="24" />
+            </div>
+          </div>
+          <p class="chanWarn" id="bkWarn" hidden></p>
+        </div>
+        <button class="btn" id="saveBooking" type="button">Save appointment settings</button>
+      </div>
+
+      <div class="panel">
         <div class="field">
           <label for="sQuick">Opening menu</label>
           <div class="hint">Tappable options shown with the greeting, one per line. Most visitors do not know what to ask, so lead with the actions worth having &mdash; booking first. Leave empty for a plain text box.</div>
@@ -1403,44 +1583,22 @@
         <button class="btn ghost" id="clearActivity">Clear leads and conversations</button>
       </div>
 
-      <!-- The install snippet is the thing an agency reaches for most often on
-           this page, so it comes before the destructive panel rather than
-           after it. -->
-      <div class="panel">
-        <div class="pHead">
-          <span class="pMark code" aria-hidden="true">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <path d="M6 11 3 8l3-3M10 5l3 3-3 3"/></svg>
-          </span>
-          <div>
-            <h2>Install on the client&rsquo;s site</h2>
-            <p class="sub">Paste this once, just before the closing &lt;/body&gt; tag. Nothing else is needed.</p>
-          </div>
-        </div>
-        <div class="snipWrap">
-          <pre id="snippet">Select a workspace first.</pre>
-          <button class="snipCopy" id="copySnippet" type="button">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"
-                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 3.5h-7a1 1 0 0 0-1 1v7"/></svg>
-            <span>Copy</span>
-          </button>
+      <div class="panel danger">
+        <h2>Delete this workspace</h2>
+        <p class="sub">Removes the chatbot, its knowledge and its leads. It is archived, not erased &mdash; ask us if you need it back.</p>
+        <div class="row">
+          <input type="text" id="delConfirm" placeholder="Type the workspace name" style="flex:1;min-width:200px" />
+          <button class="btn warn" id="delWs">Delete workspace</button>
         </div>
       </div>
-
+      <div class="panel">
+        <h2>Install on the client's site</h2>
+        <p class="sub">Paste this once, just before the closing &lt;/body&gt; tag.</p>
+        <pre id="snippet">Select a workspace first.</pre>
+        <button class="btn ghost" id="copySnippet">Copy snippet</button>
+      </div>
       <div class="panel" id="pwPanel">
-        <div class="pHead">
-          <span class="pMark key" aria-hidden="true">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="5.6" cy="10.4" r="2.9"/><path d="m7.8 8.3 5-5M11 5l1.4 1.4M9.6 6.4 11 7.8"/></svg>
-          </span>
-          <div>
-            <h2>Change your password</h2>
-            <p class="sub">Only affects your own sign-in, not your clients&rsquo; keys.</p>
-          </div>
-        </div>
+        <h2>Change your password</h2>
         <!-- A real <form> with a username field in it, on purpose.
              These were two bare password inputs with no form around them, so
              Chrome's password manager went looking for the username to pair
@@ -1463,32 +1621,6 @@
             <input type="password" id="pwNext" name="new-password" autocomplete="new-password" /></div>
           <button class="btn" id="savePw" type="submit">Change password</button>
         </form>
-      </div>
-
-      <!-- Last on the page and visually set apart, because the one thing this
-           panel must never be is something you hit on the way to something
-           else. -->
-      <div class="panel danger dangerZone">
-        <div class="pHead">
-          <span class="pMark warn" aria-hidden="true">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <path d="M8 2.6 14.6 13H1.4z"/><path d="M8 6.6v3"/><circle cx="8" cy="11.4" r=".55" fill="currentColor" stroke="none"/></svg>
-          </span>
-          <div>
-            <h2>Delete this workspace</h2>
-            <p class="sub">Removes the chatbot, its knowledge and its leads from this dashboard.</p>
-          </div>
-        </div>
-        <p class="dangerNote">
-          <strong>It is archived, not erased.</strong> You can restore it yourself from
-          <button type="button" class="linkTo" data-goto="clients">My clients</button>, or erase it for good from there.
-        </p>
-        <div class="dangerAct">
-          <label class="sr" for="delConfirm">Workspace name</label>
-          <input type="text" id="delConfirm" autocomplete="off" placeholder="Type the workspace name to confirm" />
-          <button class="btn warn" id="delWs">Delete workspace</button>
-        </div>
       </div>
     </section>
   </main>
@@ -1573,8 +1705,20 @@ document.querySelectorAll('.nav button').forEach((b) => {
     syncTopbar();
     if (b.dataset.view === 'leads') loadLeads();
     if (b.dataset.view === 'conversations') enterConvs();
+    if (b.dataset.view === 'bookings') loadBookings();
     if (b.dataset.view === 'knowledge') loadKb();
     if (b.dataset.view === 'clients') loadClients();
+  };
+});
+
+// A button inside a panel that sends you to another section, and then to the
+// panel there that actually answers it — "Open booking settings" lands on the
+// appointments panel, not at the top of a long settings page.
+document.querySelectorAll('[data-goto]').forEach((b) => {
+  b.onclick = () => {
+    $(`.nav button[data-view="${b.dataset.goto}"]`)?.click();
+    const target = b.dataset.gotoPanel && $(b.dataset.gotoPanel);
+    if (target) requestAnimationFrame(() => target.scrollIntoView({ block: 'start', behavior: 'smooth' }));
   };
 });
 
@@ -2349,6 +2493,244 @@ $('#convs').addEventListener('keydown', (e) => {
   $('#convPane').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 });
 
+// ---- bookings ----
+//
+// The clinic's own view of what the assistant has taken. Grouped by day,
+// because "Tuesday" is how a receptionist thinks about tomorrow, and the next
+// appointment is marked so the page answers "who is coming next" at a glance.
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+let bookingData = null;
+let bookSig = null;
+
+async function loadBookings() {
+  if (!tenantId) return;
+  try {
+    const d = await api(`/api/admin/${tenantId}/bookings?days=60`);
+    const sig = JSON.stringify(d);
+    if (sig === bookSig) return;          // nothing moved; leave the page alone
+    bookSig = sig;
+    bookingData = d;
+    paintBookings();
+  } catch (e) { toast(e.message); }
+}
+
+function paintBookings() {
+  const d = bookingData;
+  if (!d) return;
+  $('#bookOffPanel').hidden = d.enabled;
+  $('#bookFeedPanel').hidden = !d.enabled || !d.calendarUrl;
+  $('#blockPanel').hidden = !d.enabled;
+  if (d.calendarUrl) $('#calFeed').textContent = d.calendarUrl;
+
+  const n = d.bookings.length;
+  $('#bookingCount').textContent = n || '';
+
+  if (!d.enabled) { $('#bookList').innerHTML = ''; return; }
+  if (!n) {
+    $('#bookList').innerHTML = `<div class="empty"><strong>No appointments yet</strong>They appear here the moment a visitor books one.</div>`;
+    return;
+  }
+
+  // Grouped by the clinic's own day, which the server has already worked out
+  // in the clinic's time zone — doing it here would use the browser's.
+  const byDay = [];
+  for (const b of d.bookings) {
+    const last = byDay[byDay.length - 1];
+    if (last && last.day === b.day) last.rows.push(b);
+    else byDay.push({ day: b.day, rows: [b] });
+  }
+  const soonest = d.bookings[0]?.id;
+
+  $('#bookList').innerHTML = byDay.map((group) => `
+    <div class="bkDay">
+      <div class="bkDayHead">
+        <h3>${escapeHtml(group.day)}</h3>
+        <span>${group.rows.length} appointment${group.rows.length === 1 ? '' : 's'}</span>
+      </div>
+      ${group.rows.map((b) => `
+        <div class="bkRow ${b.id === soonest ? 'bkSoon' : ''}">
+          <span class="bkTime">${escapeHtml(b.time)}</span>
+          <span class="bkWho">
+            <b>${escapeHtml(b.name || 'No name given')}</b>
+            <small>${[b.phone, b.email, b.reason].filter(Boolean).map(escapeHtml).join(' &middot; ') || '&nbsp;'}</small>
+          </span>
+          <span class="acts">
+            ${b.phone ? `<a class="btn ghost" href="tel:${escapeHtml(b.phone.replace(/[^\d+]/g, ''))}">Call</a>` : ''}
+            <button class="btn ghost danger" data-cancelbk="${escapeHtml(b.id)}"
+                    data-who="${escapeHtml(b.name || 'this appointment')}"
+                    data-when="${escapeHtml(b.when)}">Cancel</button>
+          </span>
+        </div>`).join('')}
+    </div>`).join('');
+
+  document.querySelectorAll('[data-cancelbk]').forEach((btn) => {
+    btn.onclick = async () => {
+      // Somebody is expecting to be seen. Make that the thing being confirmed,
+      // not an abstract row id.
+      if (!confirm(`Cancel ${btn.dataset.who} on ${btn.dataset.when}?\n\nThey will be emailed to let them know, and the time goes back on the market.`)) return;
+      btn.disabled = true; btn.textContent = 'Cancelling…';
+      try {
+        const r = await api(`/api/admin/${tenantId}/bookings/${btn.dataset.cancelbk}/cancel`, { method: 'POST' });
+        toast(r.notified ? 'Cancelled, and they have been emailed.' : 'Cancelled. There was no email address on file, so please phone them.');
+        bookSig = null;
+        loadBookings();
+      } catch (e) { btn.disabled = false; btn.textContent = 'Cancel'; toast(e.message); }
+    };
+  });
+
+  $('#blockList').innerHTML = (d.blocks || []).length
+    ? `<h2 style="margin-top:18px">Blocked time</h2>` + d.blocks.map((b) => `
+        <div class="blockRow">
+          <span><b>${escapeHtml(b.reason || 'Blocked')}</b><small>${escapeHtml(b.fromLabel)} &mdash; ${escapeHtml(b.toLabel)}</small></span>
+          <button class="btn ghost" data-unblock="${escapeHtml(b.id)}">Remove</button>
+        </div>`).join('')
+    : '';
+  document.querySelectorAll('[data-unblock]').forEach((btn) => {
+    btn.onclick = async () => {
+      try { await api(`/api/admin/${tenantId}/blocks/${btn.dataset.unblock}`, { method: 'DELETE' });
+        bookSig = null; loadBookings(); }
+      catch (e) { toast(e.message); }
+    };
+  });
+}
+
+$('#addBlock')?.addEventListener('click', async () => {
+  const from = $('#blockFrom').value, to = $('#blockTo').value;
+  if (!from || !to) return toast('Pick a start and an end.');
+  try {
+    // datetime-local has no zone, and the browser's is not the clinic's. Sent
+    // as the literal wall-clock string with the clinic's zone appended by the
+    // server would be better still; for now the browser's offset is applied,
+    // which is right whenever the person blocking time is at the practice.
+    await api(`/api/admin/${tenantId}/blocks`, { method: 'POST', body: JSON.stringify({
+      from: new Date(from).toISOString(), to: new Date(to).toISOString(), reason: $('#blockWhy').value.trim(),
+    }) });
+    $('#blockFrom').value = ''; $('#blockTo').value = ''; $('#blockWhy').value = '';
+    toast('Time blocked. The assistant will not offer it.');
+    bookSig = null;
+    loadBookings();
+  } catch (e) { toast(e.message); }
+});
+
+$('#copyCalFeed')?.addEventListener('click', async () => {
+  const btn = $('#copyCalFeed'), label = btn.querySelector('span');
+  try { await navigator.clipboard.writeText($('#calFeed').textContent); }
+  catch { return toast('Could not reach the clipboard — select the address and copy it.'); }
+  btn.classList.add('done'); label.textContent = 'Copied';
+  setTimeout(() => { btn.classList.remove('done'); label.textContent = 'Copy'; }, 1600);
+});
+
+// ---- booking settings ----
+
+const BK_ZONES = [
+  'America/Toronto', 'America/Vancouver', 'America/Edmonton', 'America/Winnipeg', 'America/Halifax',
+  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Phoenix',
+  'Europe/London', 'Europe/Dublin', 'Europe/Paris', 'Europe/Berlin', 'Europe/Madrid',
+  'Asia/Karachi', 'Asia/Dubai', 'Asia/Kolkata', 'Asia/Singapore', 'Asia/Tokyo',
+  'Australia/Sydney', 'Australia/Perth', 'Pacific/Auckland', 'UTC',
+];
+
+function fillZones(current) {
+  const sel = $('#bkTimezone');
+  if (!sel) return;
+  // Whatever is already saved stays selectable even if it is not on the list —
+  // otherwise opening Settings would silently move a clinic's time zone.
+  const zones = BK_ZONES.includes(current) || !current ? BK_ZONES : [current, ...BK_ZONES];
+  sel.innerHTML = zones.map((z) => `<option value="${escapeHtml(z)}">${escapeHtml(z.replace(/_/g, ' '))}</option>`).join('');
+  sel.value = current || 'America/Toronto';
+}
+
+function paintHours(hours) {
+  $('#bkHours').innerHTML = DAY_NAMES.map((name, i) => {
+    const ranges = (hours?.[i] || hours?.[String(i)] || []);
+    const text = ranges.map((r) => `${r[0]}-${r[1]}`).join(', ');
+    return `<div class="hoursRow">
+      <span>${name}</span>
+      <input type="text" data-day="${i}" value="${escapeHtml(text)}" placeholder="closed" aria-label="${name} opening hours" />
+    </div>`;
+  }).join('');
+}
+
+// "09:00-13:00, 14:00-17:00" -> [['09:00','13:00'],['14:00','17:00']]
+function readHours() {
+  const out = {};
+  let bad = null;
+  document.querySelectorAll('#bkHours input').forEach((inp) => {
+    const day = Number(inp.dataset.day);
+    const text = inp.value.trim();
+    if (!text) { out[day] = []; return; }
+    const ranges = [];
+    for (const part of text.split(',')) {
+      const m = /^\s*(\d{1,2}:\d{2})\s*[-–—to]+\s*(\d{1,2}:\d{2})\s*$/i.exec(part);
+      if (!m) { bad = bad || `${DAY_NAMES[day]}: "${part.trim()}" is not a time range. Use 09:00-17:00.`; return; }
+      if (m[1] >= m[2]) { bad = bad || `${DAY_NAMES[day]}: ${m[1]} is not before ${m[2]}.`; return; }
+      ranges.push([m[1], m[2]]);
+    }
+    out[day] = ranges;
+  });
+  return { hours: out, error: bad };
+}
+
+function fillBooking(cfg) {
+  const b = cfg || {};
+  $('#bkEnabled').checked = Boolean(b.enabled);
+  $('#bkFields').hidden = !b.enabled;
+  fillZones(b.timezone || 'America/Toronto');
+  $('#bkSlot').value = b.slotMinutes ?? 30;
+  $('#bkBuffer').value = b.bufferMinutes ?? 0;
+  $('#bkLead').value = b.leadTimeHours ?? 3;
+  $('#bkHorizon').value = b.horizonDays ?? 21;
+  $('#bkCapacity').value = b.maxPerSlot ?? 1;
+  $('#bkAddress').value = b.address || '';
+  $('#bkMaps').value = b.mapsUrl || '';
+  $('#bkBring').value = b.bringNote || '';
+  $('#bkCancel').value = b.cancellationNote || '';
+  $('#bkRemind').value = b.reminderHours ?? 24;
+  paintHours(b.hours);
+  $('#navBookings').hidden = false;
+}
+
+$('#bkEnabled')?.addEventListener('change', () => {
+  $('#bkFields').hidden = !$('#bkEnabled').checked;
+});
+
+$('#saveBooking')?.addEventListener('click', async () => {
+  const { hours, error } = readHours();
+  const warn = $('#bkWarn');
+  if (error) { warn.hidden = false; warn.textContent = error; return; }
+  const enabled = $('#bkEnabled').checked;
+  // Switching booking on with every day closed would leave the assistant
+  // promising times and offering none.
+  if (enabled && !Object.values(hours).some((r) => r.length)) {
+    warn.hidden = false;
+    warn.textContent = 'Set opening hours on at least one day, or the assistant will have nothing to offer.';
+    return;
+  }
+  warn.hidden = true;
+  const booking = {
+    enabled,
+    timezone: $('#bkTimezone').value,
+    slotMinutes: Math.max(5, Number($('#bkSlot').value) || 30),
+    bufferMinutes: Math.max(0, Number($('#bkBuffer').value) || 0),
+    leadTimeHours: Math.max(0, Number($('#bkLead').value) || 0),
+    horizonDays: Math.min(120, Math.max(1, Number($('#bkHorizon').value) || 21)),
+    maxPerSlot: Math.max(1, Number($('#bkCapacity').value) || 1),
+    hours,
+    address: $('#bkAddress').value.trim(),
+    mapsUrl: $('#bkMaps').value.trim(),
+    bringNote: $('#bkBring').value.trim(),
+    cancellationNote: $('#bkCancel').value.trim(),
+    reminderHours: Math.max(0, Number($('#bkRemind').value) || 0),
+  };
+  try {
+    await api(`/api/admin/${tenantId}/settings`, { method: 'PUT', body: JSON.stringify({ booking }) });
+    toast(enabled ? 'Appointment settings saved. The assistant will start offering these times.' : 'Appointment settings saved. Booking is off.');
+    bookSig = null;
+    loadBookings();
+  } catch (e) { toast(e.message); }
+});
+
 // ---- knowledge ----
 let kbCache = [];
 let kbSig = '';
@@ -2601,6 +2983,7 @@ function fillSettings(s, publicKey, force = false) {
   paintPreview();
   syncSwatches();
   $('#sOrigins').value = (s.allowedOrigins || []).join('\n');
+  fillBooking(s.booking);
   const fields = s.leadFields || [];
   document.querySelectorAll('.leadField').forEach((c) => { c.checked = fields.includes(c.value); });
   paintLogo();
@@ -2763,29 +3146,7 @@ $('#saveSettings').onclick = async () => {
   } catch (e) { toast(e.message); }
 };
 
-$('#copySnippet').onclick = async () => {
-  const btn = $('#copySnippet'), label = btn.querySelector('span');
-  try {
-    await navigator.clipboard.writeText($('#snippet').textContent);
-  } catch {
-    // Clipboard access is refused on an insecure origin and in some embedded
-    // browsers. Selecting the text at least leaves the client one keystroke
-    // from having it, instead of a button that silently does nothing.
-    const r = document.createRange();
-    r.selectNodeContents($('#snippet'));
-    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
-    return toast('Could not reach the clipboard — the snippet is selected, press Ctrl+C.');
-  }
-  btn.classList.add('done'); label.textContent = 'Copied';
-  setTimeout(() => { btn.classList.remove('done'); label.textContent = 'Copy'; }, 1600);
-};
-
-// "My clients" inside the delete panel, so the way back from a mistake is one
-// click rather than something the client has to go and find.
-document.addEventListener('click', (e) => {
-  const to = e.target.closest('[data-goto]');
-  if (to) $(`.nav button[data-view="${to.dataset.goto}"]`)?.click();
-});
+$('#copySnippet').onclick = () => { navigator.clipboard.writeText($('#snippet').textContent); toast('Snippet copied.'); };
 $('#copyClientKey').onclick = () => { navigator.clipboard.writeText($('#clientKey').textContent); toast('Client key copied.'); };
 
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
@@ -2889,43 +3250,13 @@ async function loadClients() {
     $('#archiveRows').innerHTML = d.archived.map((a) => `
       <div class="crow">
         <div><strong>${escapeHtml(a.name)}</strong><small>archived ${new Date(a.archivedAt).toLocaleDateString()}</small></div>
-        <div class="acts">
-          <button class="btn ghost" data-restore="${escapeHtml(a.file)}">Restore</button>
-          <button class="btn ghost danger" data-purge="${escapeHtml(a.file)}"
-                  data-wsname="${escapeHtml(a.name)}">Erase for good</button>
-        </div>
+        <button class="btn ghost" data-restore="${escapeHtml(a.file)}">Restore</button>
       </div>`).join('');
     document.querySelectorAll('[data-restore]').forEach((b) => {
       b.onclick = async () => {
         try { await api(`/api/admin/archive/${encodeURIComponent(b.dataset.restore)}/restore`, { method: 'POST' });
           toast('Workspace restored.'); loadClients(); loadTenants(); }
         catch (e) { toast(e.message); }
-      };
-    });
-    document.querySelectorAll('[data-purge]').forEach((b) => {
-      b.onclick = async () => {
-        const name = b.dataset.wsname;
-        // Two gates, because there is no third chance. The name has to be
-        // typed — a plain yes/no is too easy to click through on the wrong row
-        // — and the server checks it again rather than trusting this.
-        const typed = prompt(
-          `Erase “${name}” permanently?\n\n`
-          + `This is not the same as deleting a workspace. The archive is removed from the server: `
-          + `its leads, conversations and knowledge cannot be recovered by us or by anyone.\n\n`
-          + `Type the workspace name to confirm:`);
-        if (typed === null) return;
-        if (typed.trim().toLowerCase() !== name.trim().toLowerCase()) return toast('That name did not match. Nothing was erased.');
-        b.disabled = true; b.textContent = 'Erasing…';
-        try {
-          await api(`/api/admin/archive/${encodeURIComponent(b.dataset.purge)}`, {
-            method: 'DELETE', body: JSON.stringify({ confirm: typed }),
-          });
-          toast(`“${name}” has been erased for good.`);
-          loadClients();
-        } catch (e) {
-          b.disabled = false; b.textContent = 'Erase for good';
-          toast(e.message);
-        }
       };
     });
 

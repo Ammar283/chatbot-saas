@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Your appointment</title>
+<!-- No sign-in and no account: the link in the confirmation email is the only
+     credential a patient will ever have, and asking them to make a password to
+     cancel a dentist appointment is how you get a phone call instead. -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root { --ink:#171A17; --paper:#EFF1EC; --card:#fff; --mist:#D8DDD3; --muted:#5F6860; --pine:#1B3A2F; --clay:#A8412F; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:Inter,ui-sans-serif,system-ui,sans-serif; background:var(--paper); color:var(--ink);
+         line-height:1.55; display:grid; place-items:center; min-height:100vh; padding:20px; }
+  .card { background:var(--card); border:1px solid var(--mist); border-radius:16px; padding:30px;
+          max-width:460px; width:100%; box-shadow:0 20px 50px -30px rgba(0,0,0,.4); }
+  h1 { font-size:21px; font-weight:700; letter-spacing:-.02em; margin-bottom:4px; }
+  .sub { color:var(--muted); font-size:14px; margin-bottom:22px; }
+  .when { font-size:19px; font-weight:600; padding:15px 17px; background:var(--paper);
+          border-radius:11px; margin-bottom:16px; }
+  .row { display:flex; gap:10px; font-size:14px; padding:9px 0; border-bottom:1px solid var(--mist); }
+  .row:last-of-type { border-bottom:0; }
+  .row b { font-weight:500; color:var(--muted); min-width:92px; flex:none; }
+  .row a { color:var(--pine); }
+  .note { font-size:13.5px; color:var(--muted); background:var(--paper); border-radius:9px;
+          padding:11px 13px; margin-top:14px; }
+  .btn { width:100%; margin-top:20px; background:none; border:1px solid var(--clay); color:var(--clay);
+         border-radius:9px; padding:12px; font:inherit; font-weight:600; cursor:pointer; transition:background .16s; }
+  .btn:hover { background:rgba(168,65,47,.07); }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .state { text-align:center; padding:26px 0; }
+  .state.bad { color:var(--clay); }
+  .tag { display:inline-block; font-size:12px; font-weight:600; padding:4px 11px; border-radius:99px;
+         background:#FBE7E3; color:var(--clay); margin-bottom:14px; }
+</style>
+</head>
+<body>
+<main class="card" id="card"><div class="state">Loading your appointment…</div></main>
+<script>
+const p = new URLSearchParams(location.search);
+const ws = p.get('w'), token = p.get('t');
+const card = document.getElementById('card');
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function load() {
+  if (!ws || !token) return fail('That link is incomplete. Please use the link from your confirmation email.');
+  try {
+    const res = await fetch(`/api/booking/${encodeURIComponent(ws)}/${encodeURIComponent(token)}`);
+    const d = await res.json();
+    if (!res.ok) return fail(d.error || 'That booking link is not valid.');
+    paint(d);
+  } catch { fail('Could not reach the server. Please try again in a moment.'); }
+}
+
+function paint(d) {
+  const cancelled = d.status === 'cancelled';
+  card.innerHTML = `
+    ${cancelled ? '<span class="tag">Cancelled</span>' : ''}
+    <h1>${cancelled ? 'This appointment was cancelled' : 'Your appointment'}</h1>
+    <p class="sub">${esc(d.business)}</p>
+    <div class="when">${esc(d.when)}</div>
+    ${d.name ? `<div class="row"><b>Booked for</b><span>${esc(d.name)}</span></div>` : ''}
+    ${d.address ? `<div class="row"><b>Where</b><span>${esc(d.address)}</span></div>` : ''}
+    ${d.mapsUrl ? `<div class="row"><b>Directions</b><a href="${esc(d.mapsUrl)}" target="_blank" rel="noopener">Open in Google Maps</a></div>` : ''}
+    ${d.note && !cancelled ? `<div class="note">${esc(d.note)}</div>` : ''}
+    ${d.cancellationNote && !cancelled ? `<div class="note">${esc(d.cancellationNote)}</div>` : ''}
+    ${cancelled ? '' : '<button class="btn" id="cancel">Cancel this appointment</button>'}`;
+  const btn = document.getElementById('cancel');
+  if (btn) btn.onclick = cancel;
+}
+
+async function cancel() {
+  // Irreversible from the patient's side, and they cannot re-book from this
+  // page — so it asks once, plainly.
+  if (!confirm('Cancel this appointment?\n\nThe time will be released for someone else, and you would need to book again.')) return;
+  const btn = document.getElementById('cancel');
+  btn.disabled = true; btn.textContent = 'Cancelling…';
+  try {
+    const res = await fetch(`/api/booking/${encodeURIComponent(ws)}/${encodeURIComponent(token)}/cancel`, { method: 'POST' });
+    if (!res.ok) throw new Error();
+    load();
+  } catch {
+    btn.disabled = false; btn.textContent = 'Cancel this appointment';
+    alert('Could not cancel just now. Please phone us instead.');
+  }
+}
+
+function fail(msg) {
+  card.innerHTML = `<div class="state bad">${esc(msg)}</div>`;
+}
+
+load();
+</script>
+</body>
+</html>
