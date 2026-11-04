@@ -244,16 +244,27 @@
         .bookWhen { font-size: 17px; font-weight: 700; line-height: 1.3; color: #16181D; letter-spacing: -.01em; }
         .bookWhen span { display: block; font-size: 13px; font-weight: 500; color: #6b7280;
                          letter-spacing: 0; margin-top: 1px; }
-        .bookMeta { margin-top: 11px; display: grid; gap: 7px; font-size: 13px; color: #16181D; line-height: 1.45; }
-        .bookMeta div { display: flex; gap: 8px; align-items: flex-start; }
-        .bookMeta svg { width: 14px; height: 14px; flex: none; margin-top: 2px; color: #6b7280; }
+        .bookMeta { margin: 13px 0 0; padding-top: 12px; border-top: 1px solid rgba(0,0,0,.08);
+                    display: grid; gap: 9px; font-size: 13px; color: #16181D; line-height: 1.45; }
+        .bookRow { display: grid; grid-template-columns: 62px 1fr; gap: 10px; align-items: baseline; }
+        .bookRow dt { margin: 0; color: #6b7280; font-size: 12px; }
+        .bookRow dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
         .bookMeta a { color: ${INK}; text-decoration: underline; }
-        .bookTip { margin-top: 11px; font-size: 12.5px; color: #6b7280; line-height: 1.45;
+        .bookTip { margin-top: 12px; font-size: 12.5px; color: #6b7280; line-height: 1.45;
                    background: #F6F6F4; border-radius: 8px; padding: 9px 11px; }
-        .bookManage { display: block; margin-top: 12px; text-align: center; text-decoration: none;
-                      border: 1px solid rgba(0,0,0,.14); border-radius: 9px; padding: 10px;
-                      font-size: 13.5px; font-weight: 600; color: #16181D; background: #fff; }
-        .bookManage:hover { border-color: ${config.accent}; color: ${INK}; }
+        .bookSent { margin-top: 11px; font-size: 12.5px; color: #6b7280; line-height: 1.45; overflow-wrap: anywhere; }
+        .bookSent b { color: #16181D; font-weight: 600; }
+        .bookActs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+        .bookAct { display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+                   text-align: center; text-decoration: none; border: 1px solid rgba(0,0,0,.14);
+                   border-radius: 9px; padding: 11px 8px; font-size: 13px; font-weight: 600;
+                   color: #16181D; background: #fff; transition: border-color .15s, background .15s; }
+        .bookAct:hover { border-color: ${config.accent}; }
+        .bookAct svg { width: 14px; height: 14px; flex: none; }
+        .bookAct.primary { background: ${config.accent}; border-color: ${config.accent}; color: ${ON}; }
+        .bookAct.primary:hover { filter: brightness(1.08); }
+        /* One action on its own should not be half a row. */
+        .bookActs:has(> :only-child) { grid-template-columns: 1fr; }
 
         @media (max-width: 520px) {
           .bookTimes { grid-template-columns: repeat(3, 1fr); }
@@ -462,17 +473,30 @@
   // the plain-text version. Every piece is optional: a practice that has not
   // filled in an address simply gets a card without that row, not an empty one.
   function bookingCardHtml(c) {
-    const pin = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 14.5s5-4.2 5-8a5 5 0 0 0-10 0c0 3.8 5 8 5 8z"/><circle cx="8" cy="6.4" r="1.8"/></svg>';
-    const person = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5.4" r="2.6"/><path d="M2.8 14c0-2.8 2.3-4.6 5.2-4.6s5.2 1.8 5.2 4.6"/></svg>';
+    // Labelled rows rather than icons alone. An icon is quick to recognise once
+    // you know the convention; a word is right the first time, and this card is
+    // read exactly once by someone who has never seen it before.
+    const row = (label, value) => `<div class="bookRow"><dt>${esc(label)}</dt><dd>${value}</dd></div>`;
     const rows = [];
-    if (c.name) rows.push(`<div>${person}<span>${esc(c.name)}</span></div>`);
+    if (c.business) rows.push(row('With', esc(c.business)));
+    if (c.name) rows.push(row('Name', esc(c.name)));
+    if (c.minutes) rows.push(row('Length', `${esc(String(c.minutes))} minutes`));
     if (c.address) {
-      const where = c.mapsUrl
-        ? `<span>${esc(c.address)}<br><a href="${esc(c.mapsUrl)}" target="_blank" rel="noopener">Get directions</a></span>`
-        : `<span>${esc(c.address)}</span>`;
-      rows.push(`<div>${pin}${where}</div>`);
+      rows.push(row('Where', c.mapsUrl
+        ? `${esc(c.address)}<br><a href="${esc(c.mapsUrl)}" target="_blank" rel="noopener">Get directions</a>`
+        : esc(c.address)));
     }
     const tips = [c.note, c.cancellationNote].filter(Boolean).map(esc).join('<br>');
+    const acts = [];
+    // Adding it to their own calendar is the thing that actually stops a
+    // no-show, so it leads.
+    if (c.icsUrl) acts.push(`<a class="bookAct primary" href="${esc(c.icsUrl)}" target="_blank" rel="noopener">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3.4" width="12" height="10.6" rx="1.6"/><path d="M2 6.8h12M5 1.6v2.6M11 1.6v2.6M8 8.8v3.2M6.4 10.4h3.2"/></svg>Add to calendar</a>`);
+    // One link to the booking page, not two. It shows every detail and cancels
+    // from the same screen, so a separate "view details" button would be a
+    // second door into the same room.
+    if (c.manageUrl) acts.push(`<a class="bookAct" href="${esc(c.manageUrl)}" target="_blank" rel="noopener">View or cancel</a>`);
+
     return `
       <div class="bookDone">
         <div class="bookDoneTop">
@@ -481,9 +505,10 @@
         </div>
         <div class="bookDoneBody">
           <div class="bookWhen">${esc(c.time)}<span>${esc(c.day)}</span></div>
-          ${rows.length ? `<div class="bookMeta">${rows.join('')}</div>` : ''}
+          ${rows.length ? `<dl class="bookMeta">${rows.join('')}</dl>` : ''}
           ${tips ? `<div class="bookTip">${tips}</div>` : ''}
-          ${c.manageUrl ? `<a class="bookManage" href="${esc(c.manageUrl)}" target="_blank" rel="noopener">Change or cancel</a>` : ''}
+          ${c.email ? `<p class="bookSent">A confirmation has been sent to <b>${esc(c.email)}</b>.</p>` : ''}
+          ${acts.length ? `<div class="bookActs">${acts.join('')}</div>` : ''}
         </div>
       </div>`;
   }

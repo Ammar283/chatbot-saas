@@ -242,6 +242,19 @@ app.post('/api/book', async (req, res) => {
 
 // The link in the confirmation email. Token only — no sign-in, because a
 // patient has no account and never will.
+// The patient's own appointment as a calendar file. The token is the whole
+// credential, same as the manage page — and it returns one event, never the
+// clinic's diary, which is what /api/calendar is for and is key-protected.
+app.get('/api/booking/:tenantId/:token.ics', (req, res) => {
+  const tenant = safeTenant(req.params.tenantId);
+  if (!tenant) return res.status(404).type('text/plain').send('Not found');
+  const b = booking.findByToken(tenant, req.params.token);
+  if (!b || b.status === 'cancelled') return res.status(404).type('text/plain').send('Not found');
+  res.type('text/calendar; charset=utf-8')
+    .set('Content-Disposition', `attachment; filename="appointment.ics"`)
+    .send(booking.icsEvent(tenant, b, { manageUrl: manageUrl(tenant, b) }));
+});
+
 app.get('/api/booking/:tenantId/:token', (req, res) => {
   const tenant = safeTenant(req.params.tenantId);
   if (!tenant) return res.status(404).json({ error: 'Not found.' });
@@ -307,17 +320,25 @@ function manageUrl(tenant, b) {
 // email carries, but as fields rather than a block of text: a raw manage URL
 // printed into a chat bubble wraps over three lines and looks like a mistake.
 function bookingCard(tenant, b, cfg, url, already) {
+  const base = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
   return {
     already: Boolean(already),
     business: tenant.name || '',
     day: booking.formatDayHeading(b.at, cfg.timezone),
     time: booking.formatTimeOnly(b.at, cfg.timezone),
+    minutes: Number(b.minutes) || cfg.slotMinutes,
     name: b.name || '',
+    // Shown back to them as "we have emailed this to ...", which is both
+    // reassurance and a prompt to go and look for it.
+    email: b.email || '',
     address: cfg.address || '',
     mapsUrl: booking.mapsLink(cfg) || '',
     note: cfg.bringNote || '',
     cancellationNote: cfg.cancellationNote || '',
     manageUrl: url || '',
+    icsUrl: base && b.token
+      ? `${base}/api/booking/${encodeURIComponent(tenant.id)}/${encodeURIComponent(b.token)}.ics`
+      : '',
   };
 }
 
@@ -435,7 +456,29 @@ app.post('/api/chat', async (req, res) => {
     // What did the bot ask for last turn? Lets us read a bare "03124574845"
     // or "Ammar Aziz" as an answer rather than guessing from the text alone.
     const required = tenant.settings.leadFields || ['name', 'phone'];
-    const lastBotMessage = [...history].reverse().find((h) => h.role === 'assistant')?.content || '';
+
+    // The transcript the SERVER holds, not the one the browser sent.
+    //
+    // The widget keeps its history in sessionStorage, so a visitor who reloads
+    // the page mid-conversation sends `history: []` — and everything derived
+    // from it collapses at once. The assistant forgets what it just asked, so
+    // a bare "Frank" is no longer read as an answer to "what is your name?";
+    // it forgets what it already said, so it re-apologises every turn; and the
+    // model is handed no context at all. The client saw exactly this: "I'm
+    // sorry, I don't have that detail" three times while a real enquiry about
+    // a promotion walked away.
+    //
+    // Every turn is already on disk. Use that, and treat what the browser
+    // sends as a fallback for the very first message of a conversation.
+    const storedTurns = tenant.conversations.find((c) => c.id === convId)?.turns || [];
+    const priorHistory = storedTurns.length
+      ? storedTurns.flatMap((t) => [
+        { role: 'user', content: String(t.q || '') },
+        { role: 'assistant', content: String(t.a || '') },
+      ])
+      : history;
+
+    const lastBotMessage = [...priorHistory].reverse().find((h) => h.role === 'assistant')?.content || '';
     const asking = /email/i.test(lastBotMessage) ? 'email'
       : /phone|number|whatsapp|mobile/i.test(lastBotMessage) ? 'phone'
       : /name/i.test(lastBotMessage) ? 'name'
@@ -485,7 +528,7 @@ app.post('/api/chat', async (req, res) => {
       { role: 'system', content: buildSystemPrompt(tenant, results, leadNow, rejected) },
       // Two exchanges is enough to follow a thread. Six long turns is most of a
       // token budget spent re-reading answers the model itself just wrote.
-      ...history.slice(-4).map((h) => ({ role: h.role, content: String(h.content).slice(0, 400) })),
+      ...priorHistory.slice(-4).map((h) => ({ role: h.role, content: String(h.content).slice(0, 400) })),
       { role: 'user', content: message.slice(0, 1000) },
     ];
 
@@ -580,8 +623,19 @@ app.post('/api/chat', async (req, res) => {
       // Drop the repeated apology, then any ask for something already on file,
       // then offer the callback ask — which no-ops once there is nothing left
       // to ask for.
-      let text = stripKnownAsks(dropRepeats(reply.answer, history), current);
+      let text = stripKnownAsks(reply.answer, current);
+      // Someone typing their name or their number is not asking the knowledge
+      // base anything, so "I'm sorry, I don't have that detail" is not just
+      // repetitive — it is an answer to a question nobody asked, and it reads
+      // as a bot that has stopped listening.
+      if (gaveDetails) text = stripApology(text);
+      else text = softenRepeatApology(text, priorHistory);
       text = appendCallbackAsk(tenant, text, current, required);
+      // Deduplicated AFTER the ask is appended, not before. A model that
+      // returns the apology on its own is a single sentence, and dropRepeats
+      // always keeps the last sentence so there is something to reply to — so
+      // run first it kept the apology, and the ask was then glued onto it.
+      text = dropRepeats(text, priorHistory);
       // Everything was stripped and nothing was added: they are already on file
       // and there is genuinely nothing to ask, so say that rather than nothing.
       reply.answer = text.trim() || 'The team has your details and will come back to you shortly.';
@@ -850,6 +904,39 @@ function appendCallbackAsk(tenant, answer, lead, required) {
 // matching alone lets the apology through again in fresh wording. Anything that
 // says "I cannot answer this" counts as one statement, however it is phrased.
 const CANNOT_ANSWER = /\b(do ?n'?t have|do not have|not sure|can'?t find|cannot find|do ?n'?t know|no information|not available)\b/i;
+
+// Remove every "I cannot answer that" sentence, keeping the rest. Used when
+// the turn was not a question at all — the caller appends the next ask, so an
+// empty result is fine and better than an apology.
+function stripApology(answer) {
+  const parts = String(answer || '').split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+  const kept = parts.filter((p) => !CANNOT_ANSWER.test(p));
+  return kept.length === parts.length ? answer : kept.join(' ');
+}
+
+// A second question the knowledge base cannot answer.
+//
+// Repeating "I'm sorry, I don't have that detail" is what made the bot look
+// broken, but deleting it outright is worse in its own way: the visitor asked
+// something and the reply becomes a bare "what is your number?", as though
+// nobody read it. So the repeat is swapped for an acknowledgement that says
+// the same thing in different words. If that has been said too, dropRepeats
+// removes it afterwards and the ask stands alone.
+const ALSO_CHECKING = 'I will check that with the team as well.';
+
+function softenRepeatApology(answer, history) {
+  const prior = history.filter((h) => h.role === 'assistant').map((h) => String(h.content));
+  if (!prior.some((c) => CANNOT_ANSWER.test(c))) return answer;       // first time: say it plainly
+  const parts = String(answer || '').split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+  let swapped = false;
+  const out = parts.map((p) => {
+    if (!CANNOT_ANSWER.test(p)) return p;
+    if (swapped) return null;                                          // only one of them
+    swapped = true;
+    return ALSO_CHECKING;
+  }).filter(Boolean);
+  return swapped ? out.join(' ') : answer;
+}
 
 function dropRepeats(answer, history) {
   const prior = history.filter((h) => h.role === 'assistant').map((h) => String(h.content));
@@ -1377,6 +1464,10 @@ app.get('/api/admin/:tenantId/overview', requireAdmin, requireTenant, (req, res)
     messages: recent.reduce((n, c) => n + c.turns.length, 0),
     leads: t.leads.length,
     newLeads: t.leads.filter((l) => l.status === 'new').length,
+    // So the Bookings badge is filled the moment the dashboard opens, rather
+    // than staying blank until someone happens to click the tab.
+    upcomingBookings: (t.bookings || []).filter(
+      (b) => b.status === 'confirmed' && b.at >= new Date().toISOString()).length,
     cacheHitRate: usage.messages ? Math.round((usage.cacheHits / usage.messages) * 100) : 0,
     estimatedCostUsd: +(((usage.inputTokens / 1e6) * Number(process.env.PRICE_IN_PER_M || 0)
       + (usage.outputTokens / 1e6) * Number(process.env.PRICE_OUT_PER_M || 0))).toFixed(4),
