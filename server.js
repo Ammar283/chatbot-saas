@@ -493,6 +493,37 @@ app.post('/api/chat', async (req, res) => {
     // the number sitting in the database the whole time.
     const scanned = cleanLead(extractFromMessage(message, asking));
     const gaveDetails = Object.keys(scanned).length > 0;
+
+    // Did the previous reply end with "shall someone call you?", and is this
+    // message the answer to it? Read before the model runs, because a bare
+    // "yes please" has no meaning on its own and the model will try to find
+    // one in the knowledge base.
+    // Pending only if the offer was the IMMEDIATELY preceding turn. Flagged on
+    // the turn itself rather than matched against the wording, so a client who
+    // rewrites the offer in Settings cannot silently break the "yes" that
+    // answers it — and rather than by index, which is off by one depending on
+    // whether this turn has been logged yet.
+    const convNow = tenant.conversations.find((c) => c.id === convId);
+    const lastTurn = convNow?.turns?.[convNow.turns.length - 1];
+    const offerPending = Boolean(lastTurn?.offeredCallback) && !convNow?.declinedCallback;
+    const acceptedOffer = offerPending && SAID_YES.test(message) && !gaveDetails;
+    // Set when THIS reply carries the offer, so the next turn can read a
+    // bare "yes" as an answer to it.
+    let offeredNow = false;
+    // What they were asking about when the offer was made. This becomes the
+    // lead's intent, so the client is told "dental implants" rather than being
+    // handed a name and a number with no idea what to say.
+    let interest = '';
+    // Mid-capture, a short reply with no question mark is an attempt at the
+    // detail that was asked for — even when the extractor could not use it
+    // ("Frank Mills" offered where a number was wanted).
+    const answeringAsk = asking !== null && !/\?/.test(message)
+      && message.trim().split(/\s+/).length <= 6;
+    if (offerPending && SAID_NO.test(message) && convNow) {
+      // Asked once, told no. Never again in this conversation.
+      convNow.declinedCallback = true;
+      store.save(tenant.id);
+    }
     const scannedLead = mergeLead(tenant, convId, scanned);
     if (scannedLead) { store.save(tenant.id); notifyOnce(tenant, scannedLead); }
 
@@ -588,17 +619,6 @@ app.post('/api/chat', async (req, res) => {
       }
     }
 
-    logTurn(tenant, convId, message, reply.answer, {
-      grounded: reply.grounded,
-      handoff: reply.handoff,
-      model: out.model,
-      // A name or phone number is not a question the bot failed to answer.
-      leadTurn: gaveDetails || asking !== null,
-      // What this reply put on screen, so that if the next message is one of
-      // them we know it was a tap and not a question.
-      offered: reply.suggestions,
-    }, req.ip);
-    store.save(tenant.id);
 
     // The bot could not answer, and has no way to reach this visitor.
     //
@@ -615,7 +635,11 @@ app.post('/api/chat', async (req, res) => {
       const conv = tenant.conversations.find((c) => c.id === convId);
       // Remember what they asked, so the lead reaches the client as "wants the
       // JetGo 550Mti-RJ" rather than an anonymous name and number.
-      if (conv && !reply.grounded && !conv.unanswered) {
+      // "yes" is an answer to the bot's own offer, not a question it failed.
+      // Recorded as a gap it would show the client "yes" in the list of things
+      // the bot could not answer, and attach it to the lead as their intent.
+      if (conv && !reply.grounded && !conv.unanswered
+          && !acceptedOffer && !gaveDetails && !answeringAsk) {
         conv.unanswered = message.trim().slice(0, 120);
         store.save(tenant.id);
       }
@@ -628,7 +652,9 @@ app.post('/api/chat', async (req, res) => {
       // base anything, so "I'm sorry, I don't have that detail" is not just
       // repetitive — it is an answer to a question nobody asked, and it reads
       // as a bot that has stopped listening.
-      if (gaveDetails) text = stripApology(text);
+      // They are not asking the knowledge base anything, so an apology about
+      // it is the wrong response.
+      if (gaveDetails || answeringAsk) text = stripApology(text);
       else text = softenRepeatApology(text, priorHistory);
       text = appendCallbackAsk(tenant, text, current, required);
       // Deduplicated AFTER the ask is appended, not before. A model that
@@ -639,6 +665,37 @@ app.post('/api/chat', async (req, res) => {
       // Everything was stripped and nothing was added: they are already on file
       // and there is genuinely nothing to ask, so say that rather than nothing.
       reply.answer = text.trim() || 'The team has your details and will come back to you shortly.';
+    } else if (!acceptedOffer) {
+      // A GOOD answer to a question about the work itself.
+      //
+      // The bot used to ask for details only when it failed, so the best
+      // enquiry a dental practice ever gets — "dental implants" — was answered
+      // beautifully and left no trace. The visitor read the answer and closed
+      // the tab, and the client never knew they existed.
+      //
+      // An offer, not an interrogation: nothing is asked for until they say
+      // yes. Once per conversation, and never for opening hours or parking,
+      // where an offer to ring them back is just noise.
+      const current = tenant.leads.find((l) => l.conversationId === convId) || {};
+      // On the first message of a conversation there is no stored record yet —
+      // it is written at the end of this request — so nothing here may require
+      // one. "Have we offered already?" is read from the turns when they exist
+      // and is simply false when they do not.
+      const alreadyOffered = Boolean(convNow?.turns?.some((t) => t.offeredCallback));
+      if (!alreadyOffered && !convNow?.declinedCallback
+          && shouldOfferCallback(tenant, current, message, reply)) {
+        reply.answer = `${reply.answer.trim()} ${callbackOffer(tenant)}`.trim();
+        offeredNow = true;
+        interest = message.trim().slice(0, 120);
+      }
+    }
+
+    // They said yes to that offer. Start collecting, deterministically —
+    // the model is not in the loop for a conversion step this short.
+    if (acceptedOffer) {
+      const current = tenant.leads.find((l) => l.conversationId === convId) || {};
+      const asked = appendCallbackAsk(tenant, '', current, required);
+      if (asked) reply.answer = `Of course. ${asked}`;
     }
 
     // The model was told the detail was refused. If it confirmed it anyway —
@@ -669,6 +726,30 @@ app.post('/api/chat', async (req, res) => {
       const days = booking.freeSlots(tenant, { days: cfgNow.horizonDays, perDay: 8, maxDays: 5 });
       if (days.length) offer = { timezone: cfgNow.timezone, days };
     }
+
+    // Logged LAST, once reply.answer is final.
+    //
+    // This used to run before the blocks above, so everything the server
+    // appends or rewrites — the callback ask, the offer, a stripped apology —
+    // was missing from the stored transcript. The client read a conversation
+    // in the dashboard that was not the one the visitor had, and because the
+    // assistant now reconstructs its own context from these turns, it was also
+    // reading back words it never said.
+    logTurn(tenant, convId, message, reply.answer, {
+      grounded: reply.grounded,
+      handoff: reply.handoff,
+      model: out.model,
+      // A name or phone number is not a question the bot failed to answer.
+      leadTurn: gaveDetails || asking !== null || acceptedOffer,
+      // Did THIS reply end with the callback offer? Read next turn, so a bare
+      // "yes" is understood as answering it.
+      offeredCallback: offeredNow,
+      interest: interest || undefined,
+      // What this reply put on screen, so that if the next message is one of
+      // them we know it was a tap and not a question.
+      offered: offer ? [] : reply.suggestions,
+    }, req.ip);
+    store.save(tenant.id);
 
     res.json({
       answer: reply.answer,
@@ -871,6 +952,39 @@ function isKnowledgeGap(turn) {
 // usually needs a conversation, not an email thread — and a number the client
 // can ring while the visitor is still interested is worth more than an address
 // they will reply to in three days.
+// --- offering a callback after a GOOD answer ---------------------------
+//
+// Deliberately narrow. Every offer that lands on the wrong question makes the
+// assistant feel like a form, and the whole value of answering well is that it
+// does not.
+
+// Logistics. Answering these IS the job; there is nothing to follow up.
+const LOGISTICS = /\b(open|opens|opening|hours|closed|closes|parking|park|address|located|location|directions|get there|phone number|email address|website|wifi|toilet|accessible|wheelchair)\b/i;
+// Money talk is interest wherever it appears, even inside a logistics question.
+const MONEY = /\b(cost|costs|costly|price|prices|pricing|how much|fee|fees|charge|charges|quote|afford|finance|financing|payment plan|instal?ments|insurance|covered|cover)\b/i;
+
+// Answers to the offer. Anchored on the whole message: "yes" alone accepts,
+// "yes, do you do implants too?" is a question and goes to the model.
+const SAID_YES = /^\s*(y|ya|yes|yeah|yep|yup|sure|ok|okay|please|yes please|go ahead|sounds good|that would be (great|good|nice)|why not|definitely|absolutely)\b[\s!.,]*$/i;
+const SAID_NO = /^\s*(n|no|nope|nah|no thanks|no thank you|not now|not right now|later|maybe later|i'?m (ok|fine|good)|just (looking|browsing))\b[\s!.,]*$/i;
+
+function callbackOffer(tenant) {
+  return String(tenant.settings.callbackOffer || '').trim()
+    || 'Would you like someone from the team to give you a call about this?';
+}
+
+function shouldOfferCallback(tenant, lead, message, reply) {
+  if (reply.handoff) return false;
+  // Already reachable: an offer to call is pointless when the client can.
+  if (String(lead.phone || '').trim() || String(lead.email || '').trim()) return false;
+  const text = String(message || '').trim();
+  if (text.length < 3 || SMALL_TALK.test(text)) return false;
+  // Price and payment are interest whatever else the sentence says.
+  if (MONEY.test(text)) return true;
+  // Otherwise: a real question about the work, not about the building.
+  return !LOGISTICS.test(text);
+}
+
 function appendCallbackAsk(tenant, answer, lead, required) {
   // Only what a callback actually needs: a number, and a name to ask for.
   // Email is left to the normal booking flow — once the client can ring them,
@@ -950,6 +1064,12 @@ function dropRepeats(answer, history) {
   if (parts.length < 2) return answer;
 
   const kept = parts.filter((p, i) => {
+    // Never drop a question. The ask is what moves the conversation on, and an
+    // ask is often two sentences — "What is the best number to reach you on?
+    // Someone will call you back." Dropping the first as a repeat left the
+    // reassurance standing alone, so the visitor was told someone would call
+    // and never asked for the number.
+    if (/\?\s*$/.test(p)) return true;
     if (i === parts.length - 1) return true;              // always leave something to reply to
     if (said.has(p.toLowerCase())) return false;          // word-for-word repeat
     return !(alreadyApologised && CANNOT_ANSWER.test(p)); // same point, new words
@@ -1110,7 +1230,12 @@ function mergeLead(tenant, convId, fields) {
   if (conv?.turns?.length) lead.firstQuestion = conv.turns[0].q;
   // The question the bot could not answer is why this person is worth calling.
   // Without it the client gets a name and a number and no idea what to say.
-  if (!String(lead.intent || '').trim() && conv?.unanswered) lead.intent = conv.unanswered;
+  if (!String(lead.intent || '').trim()) {
+    // The unanswered question if there was one, otherwise whatever they were
+    // reading about when the assistant offered them a call.
+    const asked = conv?.unanswered || conv?.turns?.find((t) => t.interest)?.interest || '';
+    if (asked) lead.intent = asked;
+  }
   return lead;
 }
 
